@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Shomed MIS",
+  title: "Shomed Remedies MIS",
   description: "Shomed Remedies Management Information System",
 };
 
