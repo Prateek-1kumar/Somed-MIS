@@ -6,14 +6,29 @@ interface Props {
   onRun: (sql: string) => void;
   onReset?: () => void;
   onSave?: (sql: string) => void;
+  onSaveOverride?: (sql: string) => Promise<void> | void;
+  onResetOverride?: () => Promise<void> | void;
+  isOverridden?: boolean;
   powerBiMode?: boolean;
 }
 
 const btnBase: React.CSSProperties = { padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', border: 'none' };
 
-export default function SqlEditor({ sql, onRun, onReset, onSave, powerBiMode }: Props) {
+export default function SqlEditor({ sql, onRun, onReset, onSave, onSaveOverride, onResetOverride, isOverridden, powerBiMode }: Props) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(sql);
+  const [lastExternalSql, setLastExternalSql] = useState(sql);
+  const [savingOverride, setSavingOverride] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+
+  // Sync textarea with sql prop whenever it changes from the parent (initial
+  // load, filter change, reset-override). We skip syncing while the editor is
+  // open so the user's in-progress edits aren't clobbered. Derived-state
+  // pattern: React bails out on the re-render when the condition is false.
+  if (sql !== lastExternalSql) {
+    setLastExternalSql(sql);
+    if (!open) setValue(sql);
+  }
   const [pbSql, setPbSql] = useState('');
   const [converting, setConverting] = useState(false);
   const [convertError, setConvertError] = useState<string | null>(null);
@@ -47,6 +62,9 @@ export default function SqlEditor({ sql, onRun, onReset, onSave, powerBiMode }: 
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ fontFamily: 'monospace', fontSize: '11px', padding: '1px 5px', borderRadius: '4px', backgroundColor: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--accent)' }}>SQL</span>
           Query Editor
+          {isOverridden && (
+            <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', fontWeight: 700, letterSpacing: '0.04em' }}>MODIFIED</span>
+          )}
         </span>
         <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{open ? '▲ HIDE' : '▼ SHOW'}</span>
       </button>
@@ -67,10 +85,32 @@ export default function SqlEditor({ sql, onRun, onReset, onSave, powerBiMode }: 
             {onReset && (
               <button onClick={() => { setValue(sql); onReset(); }} style={{ ...btnBase, backgroundColor: 'var(--bg-surface-raised)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>↺ Reset</button>
             )}
+            {onSaveOverride && (
+              <button
+                onClick={async () => {
+                  setSavingOverride(true);
+                  setOverrideError(null);
+                  try { await onSaveOverride(value); } catch (e) { setOverrideError(String(e)); }
+                  finally { setSavingOverride(false); }
+                }}
+                disabled={savingOverride}
+                style={{ ...btnBase, backgroundColor: '#16a34a', color: 'white', opacity: savingOverride ? 0.6 : 1 }}
+              >{savingOverride ? 'Saving…' : '💾 Save override'}</button>
+            )}
+            {onResetOverride && isOverridden && (
+              <button
+                onClick={async () => {
+                  setOverrideError(null);
+                  try { await onResetOverride(); } catch (e) { setOverrideError(String(e)); }
+                }}
+                style={{ ...btnBase, backgroundColor: 'transparent', color: '#b91c1c', border: '1px solid #fecaca' }}
+              >↶ Reset to default</button>
+            )}
             {onSave && (
               <button onClick={() => onSave(value)} style={{ ...btnBase, backgroundColor: 'var(--accent-light)', color: 'var(--accent)', border: '1px solid var(--accent)' }}>＋ Save as Report</button>
             )}
           </div>
+          {overrideError && <p style={{ fontSize: '12px', color: 'var(--danger)', margin: 0 }}>{overrideError}</p>}
 
           {powerBiMode && (
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>

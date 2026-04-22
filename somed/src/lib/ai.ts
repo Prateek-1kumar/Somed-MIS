@@ -36,6 +36,22 @@ PowerBI SQL:
 ${sql}
 `.trim();
 
+const REFINE_PROMPT = (currentSql: string, instruction: string, reportTitle: string) => `
+You are a DuckDB SQL editor. Modify the query below according to the user's instruction.
+Output ONLY the complete modified SQL — no markdown, no backticks, no explanation.
+Preserve the single-table model (FROM data) unless the user explicitly asks for joins on 'data'.
+If the instruction is ambiguous or unsafe, respond with: CLARIFY: <one-line question>
+
+${SCHEMA_HINT}
+
+Report: ${reportTitle}
+
+Current SQL:
+${currentSql}
+
+User instruction: ${instruction}
+`.trim();
+
 async function callGemini(prompt: string): Promise<string> {
   const client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
   const model = client.getGenerativeModel({ model: 'gemini-1.5-flash' });
@@ -62,6 +78,25 @@ export async function generateSql(question: string): Promise<{ sql?: string; cla
     console.error('Gemini failed, falling back to Groq:', e);
     response = await callGroq(prompt);
   }
+  if (response.startsWith('CLARIFY:')) return { clarify: response.replace('CLARIFY:', '').trim() };
+  return { sql: response };
+}
+
+export async function refineSql(
+  currentSql: string,
+  instruction: string,
+  reportTitle: string,
+): Promise<{ sql?: string; clarify?: string }> {
+  const prompt = REFINE_PROMPT(currentSql, instruction, reportTitle);
+  let response: string;
+  try {
+    response = await callGemini(prompt);
+  } catch (e) {
+    console.error('Gemini failed, falling back to Groq:', e);
+    response = await callGroq(prompt);
+  }
+  // Some models wrap SQL in ```sql ... ``` despite the instruction; strip it.
+  response = response.replace(/^```(?:sql)?\s*/i, '').replace(/\s*```$/i, '').trim();
   if (response.startsWith('CLARIFY:')) return { clarify: response.replace('CLARIFY:', '').trim() };
   return { sql: response };
 }

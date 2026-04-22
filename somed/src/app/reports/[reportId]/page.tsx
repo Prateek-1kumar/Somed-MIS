@@ -5,10 +5,12 @@ import { getReport } from '@/reports';
 import { useDuckDb } from '@/lib/DuckDbContext';
 import { Filters } from '@/lib/schema';
 import { saveResult, loadResult, getDataVersion } from '@/lib/persistence';
+import { fetchOverrides, saveOverride, deleteOverride } from '@/lib/overrides';
 import FilterBar from '@/components/FilterBar';
 import ReportTable from '@/components/ReportTable';
 import ReportChart from '@/components/ReportChart';
 import SqlEditor from '@/components/SqlEditor';
+import RefineWithAi from '@/components/RefineWithAi';
 import StaleBanner from '@/components/StaleBanner';
 import ExportMenu from '@/components/ExportMenu';
 
@@ -26,12 +28,17 @@ export default function ReportPage() {
   const [stale, setStale] = useState(false);
   const [lastRun, setLastRun] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'table' | 'chart'>('table');
+  const [overrideSql, setOverrideSql] = useState<string | null>(null);
+  const [overridesLoaded, setOverridesLoaded] = useState(false);
   const chartRef = useRef<HTMLDivElement>(null);
 
   const filtersRef = useRef(filters);
-  filtersRef.current = filters;
+  useEffect(() => { filtersRef.current = filters; });
 
-  const buildSql = (f: Filters) => report?.sqlFactory(f) ?? '';
+  // If an override is saved for this report, it replaces the generated SQL
+  // entirely — filters still drive FilterBar, but their WHERE clause is part of
+  // the override the user wrote, so we no longer regenerate from filters.
+  const buildSql = (f: Filters) => overrideSql ?? report?.sqlFactory(f) ?? '';
 
   const runQuery = async (sql: string) => {
     setLoading(true);
@@ -62,15 +69,18 @@ export default function ReportPage() {
   useEffect(() => {
     if (!report || !ready) return;
     let cancelled = false;
-    loadResult(reportId).then(cached => {
+    Promise.all([loadResult(reportId), fetchOverrides()]).then(([cached, overrides]) => {
       if (cancelled) return;
+      const override = overrides[reportId]?.sql ?? null;
+      setOverrideSql(override);
+      setOverridesLoaded(true);
       if (cached) {
         setRows(cached.rows);
         setCurrentSql(cached.sql);
         setLastRun(cached.lastRun);
         setStale(cached.dataVersion !== getDataVersion());
       } else {
-        const sql = buildSql(filtersRef.current);
+        const sql = override ?? report.sqlFactory(filtersRef.current);
         setCurrentSql(sql);
         runQuery(sql);
       }
@@ -78,6 +88,26 @@ export default function ReportPage() {
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportId, ready]);
+
+  const handleSaveOverride = async (sql: string) => {
+    await saveOverride(reportId, sql);
+    setOverrideSql(sql);
+    setCurrentSql(sql);
+    await runQuery(sql);
+  };
+
+  const handleResetOverride = async () => {
+    await deleteOverride(reportId);
+    setOverrideSql(null);
+    const sql = report!.sqlFactory(filters);
+    setCurrentSql(sql);
+    await runQuery(sql);
+  };
+
+  const handleRefineApply = async (sql: string) => {
+    setCurrentSql(sql);
+    await runQuery(sql);
+  };
 
   if (!report) return <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Report not found</p>;
 
@@ -140,11 +170,22 @@ export default function ReportPage() {
         </div>
       )}
 
+      {overridesLoaded && currentSql && (
+        <RefineWithAi
+          currentSql={currentSql}
+          reportTitle={report.name}
+          onApply={handleRefineApply}
+        />
+      )}
+
       <SqlEditor
         sql={currentSql}
         onRun={runQuery}
         onReset={() => { const sql = buildSql(filters); setCurrentSql(sql); runQuery(sql); }}
         onSave={saveQuery}
+        onSaveOverride={handleSaveOverride}
+        onResetOverride={handleResetOverride}
+        isOverridden={!!overrideSql}
         powerBiMode
       />
     </div>
