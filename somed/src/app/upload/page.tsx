@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { upload } from '@vercel/blob/client';
 import UploadZone from '@/components/UploadZone';
 import { useDuckDb } from '@/lib/DuckDbContext';
 import { incrementDataVersion } from '@/lib/persistence';
@@ -20,6 +21,7 @@ export default function UploadPage() {
   const [pendingYyyymm, setPendingYyyymm] = useState('');
   const [pendingRows, setPendingRows] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [done, setDone] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [history, setHistory] = useState<UploadRecord[]>(() => {
@@ -30,6 +32,7 @@ export default function UploadPage() {
   const handleConfirm = async () => {
     if (!pendingCsv) return;
     setUploading(true);
+    setUploadProgress(null);
     setUploadError(null);
     try {
       const existingRes = await fetch('/api/blob/read');
@@ -37,8 +40,8 @@ export default function UploadPage() {
       const existing = await existingRes.text();
       const hasExistingBytes = existing.trim().length > 0;
       // Refuse to append to data with a mismatched schema — that would produce a
-      // broken CSV that DuckDB can't parse. Server also validates; client check
-      // surfaces the problem before we spend time uploading 100+ MB.
+      // broken CSV that DuckDB can't parse. Server also validates in the
+      // upload-token handler; client check surfaces the problem early.
       if (hasExistingBytes && firstLine(existing) !== EXPECTED_HEADER) {
         throw new Error('The stored dataset has a different schema than this upload. Contact an admin to reset the data store before uploading.');
       }
@@ -47,12 +50,19 @@ export default function UploadPage() {
       const newLines = pendingCsv.split(/\r?\n/);
       const newDataLines = hasExisting ? newLines.slice(1).join('\n') : pendingCsv;
       const accumulated = hasExisting ? `${existing.trimEnd()}\n${newDataLines}` : pendingCsv;
-      const appendRes = await fetch('/api/blob/append', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accumulatedCsv: accumulated }),
+
+      // Direct browser-to-Vercel-Blob upload. Vercel serverless functions cap
+      // request bodies at 4.5 MB, so we can't POST the full CSV through an API
+      // route. upload() fetches a short-lived token from /api/blob/upload-token
+      // and streams the body straight to blob storage in multipart parts.
+      await upload('accumulated.csv', accumulated, {
+        access: 'private',
+        contentType: 'text/csv',
+        handleUploadUrl: '/api/blob/upload-token',
+        multipart: true,
+        clientPayload: JSON.stringify({ header: EXPECTED_HEADER }),
+        onUploadProgress: ({ percentage }) => setUploadProgress(percentage),
       });
-      if (!appendRes.ok) throw new Error(await appendRes.text());
 
       // Blob is now the source of truth — data is persisted regardless of what
       // happens next. Record the upload history and invalidate caches.
@@ -133,7 +143,9 @@ export default function UploadPage() {
             onMouseOver={e => { if (!uploading) e.currentTarget.style.backgroundColor = 'var(--accent-hover)' }}
             onMouseOut={e => e.currentTarget.style.backgroundColor = 'var(--accent)'}
             >
-              {uploading ? 'Appending Data...' : 'Confirm & Append'}
+              {uploading
+                ? (uploadProgress !== null ? `Uploading… ${Math.round(uploadProgress)}%` : 'Preparing upload…')
+                : 'Confirm & Append'}
             </button>
           </div>
         )}
