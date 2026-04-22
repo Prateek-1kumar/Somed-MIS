@@ -23,7 +23,7 @@ export default function FilterBar({ filters, onChange, show }: Props) {
       {visible.includes('fy') && (
         <select value={filters.fy ?? 'All'} onChange={e => sel('fy', e.target.value)}
           className="border border-zinc-300 rounded px-2 py-1 text-sm">
-          <option>All FY</option>
+          <option value="All">All FY</option>
           {FYS.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
       )}
