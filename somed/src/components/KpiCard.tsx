@@ -7,10 +7,16 @@ interface Props {
 
 export default function KpiCard({ label, value, sub, alert }: Props) {
   return (
-    <div className={`bg-white rounded-lg border p-4 ${alert ? 'border-red-300' : 'border-zinc-200'}`}>
-      <p className="text-xs text-zinc-500 uppercase tracking-wider">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${alert ? 'text-red-600' : 'text-zinc-800'}`}>{value}</p>
-      {sub && <p className="text-xs text-zinc-400 mt-1">{sub}</p>}
+    <div style={{
+      backgroundColor: 'var(--bg-surface)',
+      borderRadius: '10px',
+      border: `1px solid ${alert ? 'var(--danger)' : 'var(--border)'}`,
+      padding: '16px 20px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+    }}>
+      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>{label}</p>
+      <p style={{ fontSize: '24px', fontWeight: 700, color: alert ? 'var(--danger)' : 'var(--text-primary)', lineHeight: 1 }}>{value}</p>
+      {sub && <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>{sub}</p>}
     </div>
   );
 }

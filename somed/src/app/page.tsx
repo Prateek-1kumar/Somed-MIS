@@ -11,6 +11,12 @@ function fmt(n: number): string {
   return `₹${n.toLocaleString('en-IN')}`;
 }
 
+const selectStyle: React.CSSProperties = {
+  padding: '5px 28px 5px 10px', borderRadius: '6px', fontSize: '13px', fontWeight: 500,
+  border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)',
+  cursor: 'pointer', outline: 'none',
+};
+
 export default function Home() {
   const { ready, query } = useDuckDb();
   const [fy, setFy] = useState('2025-2026');
@@ -35,18 +41,20 @@ export default function Home() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-zinc-800">Shomed Remedies MIS</h1>
-        <select value={fy} onChange={e => setFy(e.target.value)}
-          className="border border-zinc-300 rounded px-3 py-1.5 text-sm">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '2px' }}>Shomed Remedies MIS</h1>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Executive Dashboard</p>
+        </div>
+        <select value={fy} onChange={e => setFy(e.target.value)} style={selectStyle}>
           {FYS.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
       </div>
 
-      {!ready && <p className="text-zinc-400 text-sm mb-4">Initialising DuckDB…</p>}
-      {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
+      {!ready && <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>Initialising DuckDB…</p>}
+      {error && <p style={{ fontSize: '13px', color: 'var(--danger)', marginBottom: '16px' }}>{error}</p>}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '32px' }}>
         <KpiCard label="Net Primary" value={fmt(Number(kpis.net_primary ?? 0))} />
         <KpiCard label="Target" value={fmt(Number(kpis.target ?? 0))} />
         <KpiCard label="Achievement" value={`${kpis.ach_pct ?? 0}%`} alert={Number(kpis.ach_pct ?? 0) < 80} />
@@ -56,13 +64,13 @@ export default function Home() {
         <KpiCard label="FOC Value" value={fmt(Number(kpis.foc_value ?? 0))} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-          <h2 className="text-sm font-semibold text-zinc-700 mb-3">HQ Achievement %</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
+        <div style={{ backgroundColor: 'var(--bg-surface)', borderRadius: '10px', border: '1px solid var(--border)', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <h2 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>HQ Achievement %</h2>
           <ReportChart rows={hqRows} chartType="bar" xKey="hq_new" valueKeys={['ach_pct']} />
         </div>
-        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-          <h2 className="text-sm font-semibold text-zinc-700 mb-3">Segment Mix</h2>
+        <div style={{ backgroundColor: 'var(--bg-surface)', borderRadius: '10px', border: '1px solid var(--border)', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <h2 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Segment Mix</h2>
           <ReportChart rows={segRows} chartType="pie" xKey="seg" valueKeys={['net_primary']} />
         </div>
       </div>

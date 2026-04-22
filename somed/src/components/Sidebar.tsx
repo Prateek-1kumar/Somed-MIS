@@ -1,7 +1,33 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
+import { ReactNode } from 'react';
 import { REPORTS, REPORT_GROUPS } from '@/reports';
+
+function toggleDark() {
+  const html = document.documentElement;
+  if (html.classList.contains('dark')) {
+    html.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
+  } else {
+    html.classList.add('dark');
+    localStorage.setItem('theme', 'dark');
+  }
+}
+
+function NavLink({ href, children, active }: { href: string; children: ReactNode; active: boolean }) {
+  return (
+    <Link href={href} style={{
+      display: 'block', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: active ? 600 : 400,
+      color: active ? 'var(--accent)' : 'var(--text-secondary)',
+      backgroundColor: active ? 'var(--accent-light)' : 'transparent',
+      textDecoration: 'none',
+    }}
+    className="hover:bg-[--bg-surface-raised]">
+      {children}
+    </Link>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -9,30 +35,46 @@ export default function Sidebar() {
   const activeId = params?.reportId;
 
   return (
-    <aside className="w-64 bg-white border-r border-zinc-200 flex flex-col overflow-y-auto shrink-0">
-      <div className="px-4 py-4 border-b border-zinc-200">
-        <p className="text-xs font-bold text-blue-700 uppercase tracking-widest">Shomed MIS</p>
+    <aside style={{
+      width: 'var(--sidebar-width)', flexShrink: 0,
+      backgroundColor: 'var(--bg-surface)',
+      borderRight: '1px solid var(--border)',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Shomed</p>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>Remedies MIS</p>
+        </div>
+        <button onClick={toggleDark} title="Toggle dark mode"
+          style={{ width: '30px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface-raised)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>
+          ◑
+        </button>
       </div>
-      <nav className="flex-1 px-2 py-3 space-y-1">
-        <Link href="/" className={`block px-3 py-2 rounded text-sm font-medium ${pathname === '/' ? 'bg-blue-50 text-blue-700' : 'text-zinc-600 hover:bg-zinc-100'}`}>
-          Dashboard
-        </Link>
+
+      {/* Nav */}
+      <nav style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+        <div style={{ marginBottom: '4px' }}>
+          <NavLink href="/" active={pathname === '/'}>Dashboard</NavLink>
+        </div>
+
         {REPORT_GROUPS.map(group => (
-          <div key={group}>
-            <p className="px-3 pt-3 pb-1 text-xs font-semibold text-zinc-400 uppercase tracking-wider">{group}</p>
+          <div key={group} style={{ marginBottom: '8px' }}>
+            <p style={{ padding: '8px 12px 4px', fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{group}</p>
             {REPORTS.filter(r => r.group === group).map(report => (
-              <Link key={report.id} href={`/reports/${report.id}`}
-                className={`block px-3 py-1.5 rounded text-sm ${activeId === report.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+              <NavLink key={report.id} href={`/reports/${report.id}`} active={activeId === report.id}>
                 {report.name}
-              </Link>
+              </NavLink>
             ))}
           </div>
         ))}
-        <div>
-          <p className="px-3 pt-3 pb-1 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Tools</p>
-          <Link href="/my-reports" className={`block px-3 py-1.5 rounded text-sm ${pathname === '/my-reports' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-zinc-600 hover:bg-zinc-100'}`}>My Reports</Link>
-          <Link href="/chat" className={`block px-3 py-1.5 rounded text-sm ${pathname === '/chat' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-zinc-600 hover:bg-zinc-100'}`}>Chat</Link>
-          <Link href="/upload" className={`block px-3 py-1.5 rounded text-sm ${pathname === '/upload' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-zinc-600 hover:bg-zinc-100'}`}>Upload CSV</Link>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px', marginTop: '8px' }}>
+          <p style={{ padding: '8px 12px 4px', fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Tools</p>
+          <NavLink href="/chat" active={pathname === '/chat'}>Chat with Data</NavLink>
+          <NavLink href="/my-reports" active={pathname === '/my-reports'}>My Reports</NavLink>
+          <NavLink href="/upload" active={pathname === '/upload'}>Upload CSV</NavLink>
         </div>
       </nav>
     </aside>

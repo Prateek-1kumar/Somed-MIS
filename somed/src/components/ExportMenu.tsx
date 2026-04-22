@@ -48,16 +48,34 @@ export default function ExportMenu({ rows, chartRef, filename = 'report' }: Prop
   };
 
   return (
-    <div className="relative">
-      <button onClick={() => setOpen(o => !o)}
-        className="px-3 py-1.5 text-sm border border-zinc-300 rounded hover:bg-zinc-50">
-        Export ▾
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(o => !o)} style={{
+        padding: '6px 14px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+        border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)',
+        display: 'flex', alignItems: 'center', gap: '6px',
+      }}>
+        ↓ Export
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 bg-white border border-zinc-200 rounded shadow-lg z-10 text-sm">
-          <button onClick={exportExcel} className="block w-full px-4 py-2 hover:bg-zinc-50 text-left">Excel (.xlsx)</button>
-          <button onClick={exportPdf} className="block w-full px-4 py-2 hover:bg-zinc-50 text-left">PDF</button>
-          {chartRef && <button onClick={exportPng} className="block w-full px-4 py-2 hover:bg-zinc-50 text-left">PNG (chart)</button>}
+        <div style={{
+          position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50, minWidth: '160px',
+          backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden',
+        }}>
+          {[
+            { label: '📊 Excel (.xlsx)', action: exportExcel },
+            { label: '📄 PDF', action: exportPdf },
+            ...(chartRef ? [{ label: '🖼 PNG (chart)', action: exportPng }] : []),
+          ].map(item => (
+            <button key={item.label} onClick={item.action} style={{
+              display: 'block', width: '100%', padding: '10px 16px', fontSize: '13px',
+              textAlign: 'left', color: 'var(--text-primary)', backgroundColor: 'transparent',
+              border: 'none', cursor: 'pointer',
+            }}
+            className="hover:bg-[--bg-surface-raised]">
+              {item.label}
+            </button>
+          ))}
         </div>
       )}
     </div>

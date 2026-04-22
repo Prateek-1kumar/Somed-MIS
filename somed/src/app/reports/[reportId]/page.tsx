@@ -79,7 +79,7 @@ export default function ReportPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportId, ready]);
 
-  if (!report) return <p className="text-zinc-500">Report not found</p>;
+  if (!report) return <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Report not found</p>;
 
   const saveQuery = async (sql: string) => {
     const name = prompt('Name this report:');
@@ -96,14 +96,16 @@ export default function ReportPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 className="text-xl font-semibold text-zinc-800">{report.name}</h1>
-          {lastRun && <p className="text-xs text-zinc-400">Last run: {lastRun}</p>}
+          <h1 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '2px' }}>{report.name}</h1>
+          {lastRun && <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Last run: {lastRun}</p>}
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => runQuery(buildSql(filters))}
-            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button onClick={() => runQuery(buildSql(filters))} style={{
+            padding: '6px 14px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+            border: 'none', backgroundColor: 'var(--accent)', color: 'white',
+          }}>
             ↺ Refresh
           </button>
           <ExportMenu rows={rows} chartRef={chartRef} filename={report.id} />
@@ -112,20 +114,24 @@ export default function ReportPage() {
 
       {stale && <StaleBanner onRefresh={() => runQuery(buildSql(filters))} onRefreshAll={() => runQuery(buildSql(filters))} />}
 
-      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {error && <p style={{ marginBottom: '12px', fontSize: '13px', color: 'var(--danger)' }}>{error}</p>}
 
       <FilterBar filters={filters} onChange={f => { setFilters(f); runQuery(buildSql(f)); }} />
 
-      <div className="flex gap-2 mb-3">
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
         {(['table', 'chart'] as const).map(t => (
-          <button key={t} onClick={() => setActiveTab(t)}
-            className={`px-3 py-1 text-sm rounded ${activeTab === t ? 'bg-blue-100 text-blue-700 font-medium' : 'text-zinc-500 hover:bg-zinc-100'}`}>
+          <button key={t} onClick={() => setActiveTab(t)} style={{
+            padding: '5px 14px', borderRadius: '6px', fontSize: '13px', fontWeight: activeTab === t ? 600 : 400, cursor: 'pointer',
+            border: activeTab === t ? 'none' : '1px solid var(--border)',
+            backgroundColor: activeTab === t ? 'var(--accent-light)' : 'transparent',
+            color: activeTab === t ? 'var(--accent)' : 'var(--text-secondary)',
+          }}>
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
 
-      {loading && <p className="text-sm text-zinc-400 mb-2">Running…</p>}
+      {loading && <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>Running…</p>}
 
       {activeTab === 'table' && <ReportTable rows={rows} />}
       {activeTab === 'chart' && (
