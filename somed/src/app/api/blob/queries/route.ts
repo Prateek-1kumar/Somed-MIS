@@ -1,11 +1,12 @@
-import { put } from '@vercel/blob';
+import { list, put } from '@vercel/blob';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    const queriesUrl = process.env.QUERIES_JSON_URL;
-    if (!queriesUrl) return NextResponse.json([]);
-    const response = await fetch(queriesUrl);
+    const { blobs } = await list({ prefix: 'saved_queries.json' });
+    const blob = blobs.find(b => b.pathname === 'saved_queries.json');
+    if (!blob) return NextResponse.json([]);
+    const response = await fetch(blob.downloadUrl);
     if (!response.ok) return NextResponse.json([]);
     const data = await response.json() as unknown[];
     return NextResponse.json(data);
@@ -21,7 +22,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'queries must be an array' }, { status: 400 });
     }
     const blob = await put('saved_queries.json', JSON.stringify(body.queries), {
-      access: 'public',
+      access: 'private',
       contentType: 'application/json',
       addRandomSuffix: false,
     });

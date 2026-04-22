@@ -1,10 +1,12 @@
+import { list } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const blobUrl = process.env.ACCUMULATED_CSV_URL;
-  if (!blobUrl) return new NextResponse('', { status: 200, headers: { 'Content-Type': 'text/csv' } });
   try {
-    const response = await fetch(blobUrl);
+    const { blobs } = await list({ prefix: 'accumulated.csv' });
+    const blob = blobs.find(b => b.pathname === 'accumulated.csv');
+    if (!blob) return new NextResponse('', { status: 200, headers: { 'Content-Type': 'text/csv' } });
+    const response = await fetch(blob.downloadUrl);
     if (!response.ok) {
       return new NextResponse(`Blob fetch failed: ${response.status}`, { status: 502, headers: { 'Content-Type': 'text/plain' } });
     }

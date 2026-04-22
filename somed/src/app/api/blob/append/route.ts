@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'accumulatedCsv must be a string' }, { status: 400 });
     }
     const blob = await put('accumulated.csv', body.accumulatedCsv, {
-      access: 'public',
+      access: 'private',
       contentType: 'text/csv',
       addRandomSuffix: false,
     });
