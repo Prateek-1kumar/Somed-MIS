@@ -27,6 +27,7 @@ export function DuckDbProvider({ children, initialCsv }: { children: ReactNode; 
 
   const reload = async (csvText: string) => {
     setReady(false);
+    await initDuckDb();
     await loadCsvData(csvText);
     setReady(true);
   };

@@ -14,6 +14,38 @@ export const CSV_COLUMNS = [
 
 export type CsvColumn = typeof CSV_COLUMNS[number];
 
+// Column types for DuckDB. Values outside the expected type become NULL via
+// TRY_CAST rather than failing the whole load.
+export const CSV_COLUMN_TYPES: Record<CsvColumn, 'VARCHAR' | 'DOUBLE'> = {
+  pts: 'DOUBLE', pp: 'DOUBLE',
+  co: 'VARCHAR', fy: 'VARCHAR', zbm: 'VARCHAR', abm: 'VARCHAR', tbm: 'VARCHAR',
+  hq_new: 'VARCHAR', hq: 'VARCHAR', customer_n: 'VARCHAR',
+  yyyymm: 'VARCHAR', year: 'DOUBLE', qtr: 'VARCHAR', hly: 'VARCHAR',
+  mth: 'DOUBLE', month: 'VARCHAR',
+  seg: 'VARCHAR', item_code: 'VARCHAR', item_name: 'VARCHAR',
+  opening_qt: 'DOUBLE', opening_va: 'DOUBLE', net_sales_: 'DOUBLE',
+  sales_qty_: 'DOUBLE', sales_valu: 'DOUBLE', sales_qty2: 'DOUBLE',
+  foc_qty__s: 'DOUBLE', foc_value_: 'DOUBLE', sales_qty3: 'DOUBLE',
+  sales_val2: 'DOUBLE', closing_qt: 'DOUBLE', closing_va: 'DOUBLE',
+  tgt_qty_p: 'DOUBLE', tgt_val_p: 'DOUBLE', tgt_qty_s: 'DOUBLE',
+  tgt_val_s: 'DOUBLE', cn_qty: 'DOUBLE', cn_value: 'DOUBLE',
+  doc_code: 'VARCHAR', dr_name: 'VARCHAR',
+  no_patient: 'DOUBLE', dc_patient: 'DOUBLE',
+  pap_stn: 'VARCHAR', pap_date: 'VARCHAR', done_by: 'VARCHAR',
+  exp_dt: 'VARCHAR', camp_exp: 'DOUBLE',
+  sample_qty: 'DOUBLE', sample_exp: 'DOUBLE', sample_pts: 'DOUBLE',
+  mrkt_qty: 'DOUBLE', mrkt_exp: 'DOUBLE', mrkt_pts: 'DOUBLE',
+  coll: 'DOUBLE', coll_date: 'VARCHAR', category: 'VARCHAR',
+  gri_qty: 'DOUBLE', gri_sales: 'DOUBLE', rdsi_qty: 'DOUBLE',
+  rdsi_sales: 'DOUBLE', sale_qty: 'DOUBLE', sale_sales: 'DOUBLE',
+  net_qty: 'DOUBLE', net_sales: 'DOUBLE', foc_rate: 'DOUBLE',
+  foc_value: 'DOUBLE', foc_val_n: 'DOUBLE',
+  batch_no_: 'VARCHAR', expiry_dat: 'VARCHAR',
+  return_qty: 'DOUBLE', return_amt: 'DOUBLE', expired: 'DOUBLE',
+  near_3: 'DOUBLE', near_6: 'DOUBLE', near_9: 'DOUBLE',
+  remark: 'VARCHAR',
+};
+
 export interface Filters {
   fy?: string;
   zbm?: string;

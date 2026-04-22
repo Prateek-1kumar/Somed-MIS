@@ -3,8 +3,16 @@ import { useState } from 'react';
 import UploadZone from '@/components/UploadZone';
 import { useDuckDb } from '@/lib/DuckDbContext';
 import { incrementDataVersion } from '@/lib/persistence';
+import { CSV_COLUMNS } from '@/lib/schema';
 
 interface UploadRecord { yyyymm: string; rows: number; date: string; }
+
+const EXPECTED_HEADER = CSV_COLUMNS.join(',');
+
+function firstLine(text: string): string {
+  const nl = text.search(/\r?\n/);
+  return (nl === -1 ? text : text.slice(0, nl)).replace(/^﻿/, '').trim();
+}
 
 export default function UploadPage() {
   const { reload } = useDuckDb();
@@ -27,7 +35,14 @@ export default function UploadPage() {
       const existingRes = await fetch('/api/blob/read');
       if (!existingRes.ok) throw new Error(`Failed to read existing data: ${existingRes.status}`);
       const existing = await existingRes.text();
-      const hasExisting = existing.trim().length > 0;
+      const hasExistingBytes = existing.trim().length > 0;
+      // Refuse to append to data with a mismatched schema — that would produce a
+      // broken CSV that DuckDB can't parse. Server also validates; client check
+      // surfaces the problem before we spend time uploading 100+ MB.
+      if (hasExistingBytes && firstLine(existing) !== EXPECTED_HEADER) {
+        throw new Error('The stored dataset has a different schema than this upload. Contact an admin to reset the data store before uploading.');
+      }
+      const hasExisting = hasExistingBytes;
       // Strip header row from new CSV when appending to existing data
       const newLines = pendingCsv.split(/\r?\n/);
       const newDataLines = hasExisting ? newLines.slice(1).join('\n') : pendingCsv;
@@ -38,7 +53,9 @@ export default function UploadPage() {
         body: JSON.stringify({ accumulatedCsv: accumulated }),
       });
       if (!appendRes.ok) throw new Error(await appendRes.text());
-      await reload(accumulated);
+
+      // Blob is now the source of truth — data is persisted regardless of what
+      // happens next. Record the upload history and invalidate caches.
       incrementDataVersion();
       const record: UploadRecord = { yyyymm: pendingYyyymm, rows: pendingRows, date: new Date().toLocaleDateString('en-IN') };
       const updated = [record, ...history].slice(0, 10);
@@ -46,6 +63,14 @@ export default function UploadPage() {
       localStorage.setItem('uploadHistory', JSON.stringify(updated));
       setDone(true);
       setPendingCsv(null);
+
+      // Best-effort: refresh in-memory DuckDB so other pages see new data
+      // without a reload. If this fails, the upload still succeeded.
+      try {
+        await reload(accumulated);
+      } catch (reloadErr) {
+        setUploadError(`Data saved, but refreshing in-memory DuckDB failed: ${String(reloadErr)}. Reload the page to see the updated data.`);
+      }
     } catch (e) {
       setUploadError(String(e));
     } finally {
