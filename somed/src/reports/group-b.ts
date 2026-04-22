@@ -17,7 +17,7 @@ export function r6ItemWise(filters: Filters): string {
     FROM data
     ${where}
     GROUP BY item_code, item_name, seg
-    ORDER BY achievement_pct ASC
+    ORDER BY achievement_pct ASC NULLS LAST
   `.trim();
 }
 
@@ -33,13 +33,11 @@ export function r7ItemHqPerformance(filters: Filters): string {
   `.trim();
 }
 
-export function r8ItemFyIncrDecr(filters: Filters): string {
-  const segFilter = filters.seg ? `WHERE seg = '${filters.seg}'` : '';
+export function r8ItemFyIncrDecr(_filters: Filters): string {
   return `
     SELECT item_name, fy,
       SUM(net_sales_) AS net_primary
     FROM data
-    ${segFilter}
     GROUP BY item_name, fy
     ORDER BY item_name, fy
   `.trim();

@@ -15,7 +15,7 @@ export function r13HqAnalysis(filters: Filters): string {
     FROM data
     ${where}
     GROUP BY zbm, abm, hq_new
-    ORDER BY achievement_pct ASC
+    ORDER BY achievement_pct ASC NULLS LAST
   `.trim();
 }
 
@@ -30,7 +30,7 @@ export function r14HqItemPerformance(filters: Filters): string {
     FROM data
     ${where}
     GROUP BY item_name, seg
-    ORDER BY achievement_pct ASC
+    ORDER BY achievement_pct ASC NULLS LAST
   `.trim();
 }
 
