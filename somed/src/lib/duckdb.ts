@@ -67,7 +67,9 @@ export function loadCsvData(csvText: string): Promise<void> {
           quote = '"',
           escape = '"',
           header = true,
-          all_varchar = true
+          all_varchar = true,
+          strict_mode = false,
+          null_padding = true
         ) AS raw
       `);
       loaded = true;
