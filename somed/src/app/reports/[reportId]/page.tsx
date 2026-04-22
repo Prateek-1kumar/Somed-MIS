@@ -28,6 +28,9 @@ export default function ReportPage() {
   const [activeTab, setActiveTab] = useState<'table' | 'chart'>('table');
   const chartRef = useRef<HTMLDivElement>(null);
 
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+
   const buildSql = (f: Filters) => report?.sqlFactory(f) ?? '';
 
   const runQuery = async (sql: string) => {
@@ -58,18 +61,21 @@ export default function ReportPage() {
 
   useEffect(() => {
     if (!report || !ready) return;
+    let cancelled = false;
     loadResult(reportId).then(cached => {
+      if (cancelled) return;
       if (cached) {
         setRows(cached.rows);
         setCurrentSql(cached.sql);
         setLastRun(cached.lastRun);
         setStale(cached.dataVersion !== getDataVersion());
       } else {
-        const sql = buildSql(filters);
+        const sql = buildSql(filtersRef.current);
         setCurrentSql(sql);
         runQuery(sql);
       }
     });
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportId, ready]);
 
