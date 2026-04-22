@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Papa from 'papaparse';
 import { upload } from '@vercel/blob/client';
 import UploadZone from '@/components/UploadZone';
 import { useDuckDb } from '@/lib/DuckDbContext';
@@ -13,6 +14,36 @@ const EXPECTED_HEADER = CSV_COLUMNS.join(',');
 function firstLine(text: string): string {
   const nl = text.search(/\r?\n/);
   return (nl === -1 ? text : text.slice(0, nl)).replace(/^﻿/, '').trim();
+}
+
+function collectYyyymm(csv: string): Set<string> {
+  const set = new Set<string>();
+  Papa.parse<Record<string, string>>(csv, {
+    header: true,
+    skipEmptyLines: true,
+    step: (result) => {
+      const yy = (result.data.yyyymm ?? '').toString().trim();
+      if (yy) set.add(yy);
+    },
+  });
+  return set;
+}
+
+// Remove rows whose yyyymm is in the set, returning a CSV with the same header.
+// Used to make uploads replace-by-period: re-uploading a month's data drops the
+// old copy rather than appending a duplicate.
+function dropRowsByYyyymm(csv: string, yyyymmSet: Set<string>): string {
+  if (yyyymmSet.size === 0) return csv;
+  const kept: Record<string, string>[] = [];
+  Papa.parse<Record<string, string>>(csv, {
+    header: true,
+    skipEmptyLines: true,
+    step: (result) => {
+      const yy = (result.data.yyyymm ?? '').toString().trim();
+      if (!yyyymmSet.has(yy)) kept.push(result.data);
+    },
+  });
+  return Papa.unparse(kept, { columns: [...CSV_COLUMNS] });
 }
 
 export default function UploadPage() {
@@ -45,11 +76,16 @@ export default function UploadPage() {
       if (hasExistingBytes && firstLine(existing) !== EXPECTED_HEADER) {
         throw new Error('The stored dataset has a different schema than this upload. Contact an admin to reset the data store before uploading.');
       }
-      const hasExisting = hasExistingBytes;
-      // Strip header row from new CSV when appending to existing data
+      // Replace-by-period: drop any rows in the existing blob whose yyyymm
+      // appears in the new upload before concatenating. Without this, uploading
+      // the same month twice doubles that period's rows; this also heals a
+      // blob that's already been doubled by prior re-uploads.
+      const newYyyymm = collectYyyymm(pendingCsv);
+      const filteredExisting = hasExistingBytes ? dropRowsByYyyymm(existing, newYyyymm) : '';
+      const hasFiltered = filteredExisting.trim().length > 0;
       const newLines = pendingCsv.split(/\r?\n/);
-      const newDataLines = hasExisting ? newLines.slice(1).join('\n') : pendingCsv;
-      const accumulated = hasExisting ? `${existing.trimEnd()}\n${newDataLines}` : pendingCsv;
+      const newDataLines = hasFiltered ? newLines.slice(1).join('\n') : pendingCsv;
+      const accumulated = hasFiltered ? `${filteredExisting.trimEnd()}\n${newDataLines}` : pendingCsv;
 
       // Direct browser-to-Vercel-Blob upload. Vercel serverless functions cap
       // request bodies at 4.5 MB, so we can't POST the full CSV through an API
