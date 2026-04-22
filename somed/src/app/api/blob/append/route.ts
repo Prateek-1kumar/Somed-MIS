@@ -11,6 +11,7 @@ export async function POST(req: NextRequest) {
       access: 'private',
       contentType: 'text/csv',
       addRandomSuffix: false,
+      allowOverwrite: true,
     });
     return NextResponse.json({ url: blob.url });
   } catch (e) {

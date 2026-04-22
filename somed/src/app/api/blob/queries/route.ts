@@ -6,7 +6,9 @@ export async function GET() {
     const { blobs } = await list({ prefix: 'saved_queries.json' });
     const blob = blobs.find(b => b.pathname === 'saved_queries.json');
     if (!blob) return NextResponse.json([]);
-    const response = await fetch(blob.downloadUrl);
+    const response = await fetch(blob.url, {
+      headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
+    });
     if (!response.ok) return NextResponse.json([]);
     const data = await response.json() as unknown[];
     return NextResponse.json(data);
@@ -25,6 +27,7 @@ export async function PUT(req: NextRequest) {
       access: 'private',
       contentType: 'application/json',
       addRandomSuffix: false,
+      allowOverwrite: true,
     });
     return NextResponse.json({ url: blob.url });
   } catch (e) {
