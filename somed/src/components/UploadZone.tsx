@@ -18,6 +18,7 @@ export default function UploadZone({ onValidated }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [validation, setValidation] = useState<ValidationState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const processFile = (file: File) => {
     setError(null);
@@ -47,22 +48,33 @@ export default function UploadZone({ onValidated }: Props) {
   return (
     <div>
       <div
-        onDragOver={e => e.preventDefault()}
-        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) processFile(f); }}
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) processFile(f); }}
         onClick={() => inputRef.current?.click()}
-        className="border-2 border-dashed border-zinc-300 rounded-lg p-12 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+        style={{
+          border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border-strong)'}`,
+          borderRadius: '10px',
+          padding: '48px 32px',
+          textAlign: 'center',
+          cursor: 'pointer',
+          backgroundColor: dragging ? 'var(--bg-accent)' : 'var(--bg-surface)',
+          transition: 'all 0.15s ease',
+        }}
       >
-        <p className="text-zinc-500 text-sm">Drop CSV here or click to browse</p>
-        <input ref={inputRef} type="file" accept=".csv" className="hidden"
+        <div style={{ fontSize: '32px', marginBottom: '12px' }}>📂</div>
+        <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>Drop CSV here or click to browse</p>
+        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Accepts .csv files matching the Shomed schema</p>
+        <input ref={inputRef} type="file" accept=".csv" style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
       </div>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p style={{ marginTop: '8px', fontSize: '13px', color: 'var(--danger)' }}>{error}</p>}
       {validation && (
-        <div className="mt-4 space-y-1 text-sm">
-          <p className="text-green-700">✅ {CSV_COLUMNS.length} columns match expected schema</p>
-          <p className="text-green-700">✅ {validation.totalRows} rows detected (yyyymm = {validation.yyyymm})</p>
+        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <p style={{ fontSize: '13px', color: 'var(--success)', fontWeight: 500 }}>✅ {CSV_COLUMNS.length} columns match expected schema</p>
+          <p style={{ fontSize: '13px', color: 'var(--success)', fontWeight: 500 }}>✅ {validation.totalRows} rows detected (yyyymm = {validation.yyyymm})</p>
           {validation.blankHqCount > 0 && (
-            <p className="text-amber-600">⚠️ {validation.blankHqCount} rows have blank hq_new — review before appending</p>
+            <p style={{ fontSize: '13px', color: 'var(--warning)', fontWeight: 500 }}>⚠️ {validation.blankHqCount} rows have blank hq_new — review before appending</p>
           )}
         </div>
       )}

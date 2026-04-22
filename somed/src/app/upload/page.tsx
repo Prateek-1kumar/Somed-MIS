@@ -54,8 +54,8 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-xl font-semibold text-zinc-800 mb-6">Monthly Data Upload</h1>
+    <div style={{ maxWidth: '640px' }}>
+      <h1 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '24px' }}>Monthly Data Upload</h1>
       <UploadZone onValidated={(csv, validation) => {
         setPendingCsv(csv);
         setPendingYyyymm(validation.yyyymm);
@@ -64,23 +64,28 @@ export default function UploadPage() {
         setUploadError(null);
       }} />
       {pendingCsv && !done && (
-        <div className="mt-4 flex gap-3">
-          <button onClick={handleConfirm} disabled={uploading}
-            className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+        <div style={{ marginTop: '16px', display: 'flex', gap: '10px' }}>
+          <button onClick={handleConfirm} disabled={uploading} style={{
+            padding: '8px 18px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+            border: 'none', backgroundColor: 'var(--accent)', color: 'white',
+            opacity: uploading ? 0.5 : 1,
+          }}>
             {uploading ? 'Appending…' : 'Confirm & Append'}
           </button>
-          <button onClick={() => { setPendingCsv(null); setUploadError(null); }}
-            className="px-4 py-2 border border-zinc-300 rounded text-sm hover:bg-zinc-50">Cancel</button>
+          <button onClick={() => { setPendingCsv(null); setUploadError(null); }} style={{
+            padding: '8px 18px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+            border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)',
+          }}>Cancel</button>
         </div>
       )}
-      {uploadError && <p className="mt-3 text-sm text-red-600">{uploadError}</p>}
-      {done && <p className="mt-4 text-sm text-green-700">✅ Data appended successfully. All reports marked for refresh.</p>}
+      {uploadError && <p style={{ marginTop: '12px', fontSize: '13px', color: 'var(--danger)' }}>{uploadError}</p>}
+      {done && <p style={{ marginTop: '16px', fontSize: '13px', color: 'var(--success)', fontWeight: 500 }}>✅ Data appended successfully. All reports marked for refresh.</p>}
       {history.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-sm font-semibold text-zinc-600 mb-2">Upload History</h2>
-          <div className="space-y-1">
+        <div style={{ marginTop: '32px' }}>
+          <h2 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Upload History</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {history.map((h, i) => (
-              <div key={i} className="text-sm text-zinc-500">{h.date} — {h.rows} rows (yyyymm: {h.yyyymm})</div>
+              <div key={i} style={{ fontSize: '13px', color: 'var(--text-secondary)', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>{h.date} — {h.rows} rows (yyyymm: {h.yyyymm})</div>
             ))}
           </div>
         </div>

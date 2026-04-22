@@ -8,7 +8,7 @@ import ExportMenu from '@/components/ExportMenu';
 function ResultBlock({ rows }: { rows: Record<string, unknown>[] }) {
   const chartRef = useRef<HTMLDivElement>(null);
   return (
-    <div className="space-y-2">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
       <ReportTable rows={rows} />
       <div ref={chartRef}><ReportChart rows={rows} chartType="bar" /></div>
       <ExportMenu rows={rows} chartRef={chartRef} filename="chat-result" />
@@ -87,41 +87,50 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-full max-w-3xl mx-auto">
-      <h1 className="text-xl font-semibold text-zinc-800 mb-4">Chat with your data</h1>
-      <div className="flex-1 overflow-y-auto space-y-4 pb-4">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: '800px', margin: '0 auto' }}>
+      <h1 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px' }}>Chat with your data</h1>
+      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '16px' }}>
         {messages.map(msg => (
           <div key={msg.id}>
             {msg.role === 'user' && (
-              <div className="flex justify-end">
-                <div className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm max-w-lg">{msg.text}</div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{ backgroundColor: 'var(--accent)', color: 'white', borderRadius: '10px', padding: '10px 16px', fontSize: '14px', maxWidth: '480px' }}>{msg.text}</div>
               </div>
             )}
             {msg.role === 'ai' && (
-              <div className="space-y-2">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {msg.error && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700">
+                  <div style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--danger)', borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: 'var(--danger)' }}>
                     {msg.error}
                   </div>
                 )}
                 {msg.clarify && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-800">
+                  <div style={{ backgroundColor: '#fefce8', border: '1px solid #fde047', borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: '#854d0e' }}>
                     {msg.clarify}
                   </div>
                 )}
                 {msg.sql && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3">
-                    <p className="text-xs text-zinc-500 mb-1">Generated SQL — verify before running:</p>
+                  <div style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 500 }}>Generated SQL — verify before running:</p>
                     <textarea
                       value={msg.sql}
                       onChange={e => editSql(msg.id, e.target.value)}
-                      className="w-full font-mono text-xs border border-zinc-300 rounded p-2 h-28 resize-y"
+                      style={{
+                        width: '100%', height: '112px', resize: 'vertical', padding: '8px', fontSize: '12px',
+                        fontFamily: 'var(--font-geist-mono, monospace)', borderRadius: '6px',
+                        border: '1px solid var(--border)', backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)',
+                        outline: 'none', lineHeight: 1.6,
+                      }}
                     />
-                    <div className="flex gap-2 mt-2 flex-wrap">
-                      <button onClick={() => runSql(msg.id, msg.sql!)}
-                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">Run ▶</button>
-                      <button onClick={() => saveSql(msg.sql!)}
-                        className="px-3 py-1 text-xs border border-blue-300 text-blue-700 rounded hover:bg-blue-50">Save as Report</button>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                      <button onClick={() => runSql(msg.id, msg.sql!)} style={{
+                        padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                        border: 'none', backgroundColor: 'var(--accent)', color: 'white',
+                      }}>Run ▶</button>
+                      <button onClick={() => saveSql(msg.sql!)} style={{
+                        padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                        border: '1px solid var(--accent)', backgroundColor: 'var(--accent-light)', color: 'var(--accent)',
+                      }}>Save as Report</button>
                     </div>
                   </div>
                 )}
@@ -130,19 +139,26 @@ export default function ChatPage() {
             )}
           </div>
         ))}
-        {loading && <p className="text-sm text-zinc-400">Generating SQL…</p>}
+        {loading && <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Generating SQL…</p>}
         <div ref={bottomRef} />
       </div>
-      <div className="border-t border-zinc-200 pt-3 flex gap-2">
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', gap: '8px' }}>
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
           placeholder="Ask anything about your data…"
-          className="flex-1 border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+          style={{
+            flex: 1, borderRadius: '8px', padding: '10px 14px', fontSize: '14px',
+            border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)',
+            outline: 'none',
+          }}
         />
-        <button onClick={send} disabled={loading || !input.trim()}
-          className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50">Send</button>
+        <button onClick={send} disabled={loading || !input.trim()} style={{
+          padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+          border: 'none', backgroundColor: 'var(--accent)', color: 'white',
+          opacity: (loading || !input.trim()) ? 0.5 : 1,
+        }}>Send</button>
       </div>
     </div>
   );
