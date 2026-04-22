@@ -10,6 +10,7 @@ export default function Home() {
           alt="Next.js logo"
           width={100}
           height={20}
+          style={{ height: "auto" }}
           priority
         />
         <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
@@ -47,6 +48,7 @@ export default function Home() {
               alt="Vercel logomark"
               width={16}
               height={16}
+              style={{ height: "auto" }}
             />
             Deploy Now
           </a>
