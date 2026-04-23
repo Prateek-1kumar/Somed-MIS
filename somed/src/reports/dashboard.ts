@@ -43,6 +43,7 @@ export function dashOverviewFy(filters: Filters): string {
       SUM(tgt_val_s)                                                         AS secondary_target,
       ROUND(SUM(sales_valu)/NULLIF(SUM(tgt_val_s),0)*100,1)                 AS secondary_ach_pct,
       SUM(foc_value)                                                         AS foc_value,
+      SUM(foc_qty__s + cn_qty)                                               AS foc_qty,
       SUM(sales_valu) - SUM(foc_val_n)                                      AS net_secondary
     FROM data ${where}
     GROUP BY fy
