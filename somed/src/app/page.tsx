@@ -1,78 +1,93 @@
+// src/app/page.tsx
 'use client';
-import { useState, useEffect } from 'react';
-import { useDuckDb } from '@/lib/DuckDbContext';
-import KpiCard from '@/components/KpiCard';
-import ReportChart from '@/components/ReportChart';
+import { useState } from 'react';
+import { Filters } from '@/lib/schema';
+import OverviewTab from '@/components/dashboard/OverviewTab';
+import BrandTab from '@/components/dashboard/BrandTab';
+import SegmentTab from '@/components/dashboard/SegmentTab';
+import ExpensesTab from '@/components/dashboard/ExpensesTab';
+import PrimaryBifurcationTab from '@/components/dashboard/PrimaryBifurcationTab';
+import ReturningTab from '@/components/dashboard/ReturningTab';
 
-const FYS = ['2022-2023','2023-2024','2024-2025','2025-2026','2026-2027'];
+const FYS = ['2022-2023', '2023-2024', '2024-2025', '2025-2026', '2026-2027'];
+const ZBMs = ['', 'RBM WEST', 'ZBM EAST', 'ZBM MP'];
+const SEGS = ['', 'ABX', 'GASTRO', 'GYNAE', 'NEURO', 'ORTHO', 'WELLNESS'];
 
-function fmt(n: number): string {
-  if (n >= 100000) return `₹${(n/100000).toFixed(1)}L`;
-  return `₹${n.toLocaleString('en-IN')}`;
-}
+type TabId = 'overview' | 'brand' | 'segment' | 'expenses' | 'primary' | 'returning';
 
-const selectStyle: React.CSSProperties = {
-  padding: '5px 28px 5px 10px', borderRadius: '6px', fontSize: '13px', fontWeight: 500,
-  border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)',
-  cursor: 'pointer', outline: 'none',
-};
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'overview',   label: 'Overview' },
+  { id: 'brand',      label: 'Brand Analysis' },
+  { id: 'segment',    label: 'Segment Analysis' },
+  { id: 'expenses',   label: 'Expenses' },
+  { id: 'primary',    label: 'Primary Bifurcation' },
+  { id: 'returning',  label: 'Returning' },
+];
+
+const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-muted)] cursor-pointer';
 
 export default function Home() {
-  const { ready, query } = useDuckDb();
-  const [fy, setFy] = useState('2025-2026');
-  const [kpis, setKpis] = useState<Record<string, number>>({});
-  const [hqRows, setHqRows] = useState<Record<string, unknown>[]>([]);
-  const [segRows, setSegRows] = useState<Record<string, unknown>[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [filters, setFilters] = useState<Filters>({ fy: '2025-2026' });
 
-  useEffect(() => {
-    if (!ready) return;
-    setError(null);
-    Promise.all([
-      query(`SELECT SUM(net_sales_) AS net_primary, SUM(tgt_val_p) AS target, ROUND(SUM(net_sales_)/NULLIF(SUM(tgt_val_p),0)*100,1) AS ach_pct, SUM(coll) AS collection, SUM(sales_valu)-SUM(foc_val_n) AS secondary_net, SUM(closing_va) AS closing_value, SUM(foc_value) AS foc_value FROM data WHERE fy='${fy}'`),
-      query(`SELECT hq_new, ROUND(SUM(net_sales_)/NULLIF(SUM(tgt_val_p),0)*100,1) AS ach_pct, SUM(net_sales_) AS net_primary FROM data WHERE fy='${fy}' GROUP BY hq_new ORDER BY ach_pct ASC NULLS LAST`),
-      query(`SELECT seg, SUM(net_sales_) AS net_primary FROM data WHERE fy='${fy}' GROUP BY seg ORDER BY net_primary DESC`),
-    ]).then(([kpiRes, hqRes, segRes]) => {
-      setKpis((kpiRes[0] as Record<string, number>) ?? {});
-      setHqRows(hqRes);
-      setSegRows(segRes);
-    }).catch(e => setError(String(e)));
-  }, [ready, fy]);
+  const setFilter = (key: keyof Filters, val: string) =>
+    setFilters(prev => ({ ...prev, [key]: val || undefined }));
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '2px' }}>Shomed Remedies MIS</h1>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Executive Dashboard</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Shomed Remedies MIS</h1>
+          <p className="text-sm text-[var(--text-muted)] mt-0.5">Executive Dashboard</p>
         </div>
-        <select value={fy} onChange={e => setFy(e.target.value)} style={selectStyle}>
-          {FYS.map(f => <option key={f} value={f}>{f}</option>)}
-        </select>
+
+        {/* Filter Bar */}
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={filters.fy ?? ''} onChange={e => setFilter('fy', e.target.value)} className={selectCls}>
+            <option value="">All FYs</option>
+            {FYS.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <select value={filters.zbm ?? ''} onChange={e => setFilter('zbm', e.target.value)} className={selectCls}>
+            {ZBMs.map(z => <option key={z} value={z}>{z || 'All ZBMs'}</option>)}
+          </select>
+          <select value={filters.seg ?? ''} onChange={e => setFilter('seg', e.target.value)} className={selectCls}>
+            {SEGS.map(s => <option key={s} value={s}>{s || 'All Segments'}</option>)}
+          </select>
+          <button
+            onClick={() => setFilters({ fy: '2025-2026' })}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-raised)] transition-colors"
+          >
+            Reset
+          </button>
+        </div>
       </div>
 
-      {!ready && <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>Initialising DuckDB…</p>}
-      {error && <p style={{ fontSize: '13px', color: 'var(--danger)', marginBottom: '16px' }}>{error}</p>}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <KpiCard label="Net Primary" value={fmt(Number(kpis.net_primary ?? 0))} />
-        <KpiCard label="Target" value={fmt(Number(kpis.target ?? 0))} />
-        <KpiCard label="Achievement" value={`${kpis.ach_pct ?? 0}%`} alert={Number(kpis.ach_pct ?? 0) < 80} />
-        <KpiCard label="Collection" value={fmt(Number(kpis.collection ?? 0))} />
-        <KpiCard label="Secondary Net" value={fmt(Number(kpis.secondary_net ?? 0))} />
-        <KpiCard label="Closing Stock" value={fmt(Number(kpis.closing_value ?? 0))} />
-        <KpiCard label="FOC Value" value={fmt(Number(kpis.foc_value ?? 0))} />
+      {/* Tab Bar */}
+      <div className="flex gap-1 overflow-x-auto border-b border-[var(--border)] pb-0">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-all -mb-px ${
+              activeTab === tab.id
+                ? 'border-[var(--accent)] text-[var(--accent)]'
+                : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
-        <div style={{ backgroundColor: 'var(--bg-surface)', borderRadius: '10px', border: '1px solid var(--border)', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <h2 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>HQ Achievement %</h2>
-          <ReportChart rows={hqRows} chartType="bar" xKey="hq_new" valueKeys={['ach_pct']} />
-        </div>
-        <div style={{ backgroundColor: 'var(--bg-surface)', borderRadius: '10px', border: '1px solid var(--border)', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <h2 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Segment Mix</h2>
-          <ReportChart rows={segRows} chartType="pie" xKey="seg" valueKeys={['net_primary']} />
-        </div>
+      {/* Tab Content */}
+      <div>
+        {activeTab === 'overview'   && <OverviewTab filters={filters} />}
+        {activeTab === 'brand'      && <BrandTab filters={filters} />}
+        {activeTab === 'segment'    && <SegmentTab filters={filters} />}
+        {activeTab === 'expenses'   && <ExpensesTab filters={filters} />}
+        {activeTab === 'primary'    && <PrimaryBifurcationTab filters={filters} />}
+        {activeTab === 'returning'  && <ReturningTab filters={filters} />}
       </div>
     </div>
   );
