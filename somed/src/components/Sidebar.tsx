@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { REPORTS, REPORT_GROUPS } from '@/reports';
 import { LayoutDashboard, MessageSquare, FolderKanban, UploadCloud, Moon, Sun, ChevronRight, BarChart3 } from 'lucide-react'; // Let's use lucide-react if available or simple SVGs. I will use SVGs if lucide-react isn't there, but it's simpler to just provide elegant HTML.
 
@@ -45,6 +45,53 @@ const UploadIcon = ({ className }: {className?: string}) => <svg className={clas
 const ChartIcon = ({ className }: {className?: string}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>;
 const ChevronRightIcon = ({ className }: {className?: string}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>;
 
+function LegacyReportsSection({ activeId }: { activeId: string | undefined }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider hover:text-[var(--text-primary)] transition-colors rounded-lg hover:bg-[var(--bg-surface-raised)]"
+      >
+        <span>Legacy Reports</span>
+        <svg
+          className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m9 18 6-6-6-6" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="mt-1.5 space-y-1.5">
+          {REPORT_GROUPS.map(group => {
+            const groupReports = REPORTS.filter(r => r.group === group);
+            if (groupReports.length === 0) return null;
+            return (
+              <div key={group} className="space-y-1">
+                <h3 className="px-3 text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mt-2">
+                  {group}
+                </h3>
+                {groupReports.map(report => (
+                  <NavLink
+                    key={report.id}
+                    href={`/reports/${report.id}`}
+                    active={activeId === report.id}
+                    icon={<ChartIcon />}
+                  >
+                    {report.name}
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const params = useParams<{ reportId?: string }>();
@@ -84,28 +131,7 @@ export default function Sidebar() {
         </div>
 
         {/* Reports Groups */}
-        {REPORT_GROUPS.map(group => {
-          const groupReports = REPORTS.filter(r => r.group === group);
-          if (groupReports.length === 0) return null;
-          
-          return (
-            <div key={group} className="space-y-1.5">
-              <h3 className="px-3 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
-                {group}
-              </h3>
-              {groupReports.map(report => (
-                <NavLink 
-                  key={report.id} 
-                  href={`/reports/${report.id}`} 
-                  active={activeId === report.id}
-                  icon={<ChartIcon />}
-                >
-                  {report.name}
-                </NavLink>
-              ))}
-            </div>
-          );
-        })}
+        <LegacyReportsSection activeId={activeId} />
       </nav>
       
       {/* Footer / User Profile area optional placeholder */}
