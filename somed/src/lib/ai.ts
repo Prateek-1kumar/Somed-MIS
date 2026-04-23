@@ -4,24 +4,53 @@ import Groq from 'groq-sdk';
 import { CSV_COLUMNS } from './schema';
 
 const SCHEMA_HINT = `
-Table name: data
+Table name: data (single table, no joins needed)
 Columns: ${CSV_COLUMNS.join(', ')}
-Key computed metrics:
-- Net Primary = net_sales_
-- Achievement % = SUM(net_sales_)/NULLIF(SUM(tgt_val_p),0)*100
-- Secondary Net = SUM(sales_valu) - SUM(foc_val_n)
-- Use gri_sales for return value (not return_amt)
+
+KEY FORMULAS — use these exactly:
+- Primary Sales       = SUM(net_sales_)
+- Primary Target      = SUM(tgt_val_p)
+- Primary Ach%        = ROUND(SUM(net_sales_)/NULLIF(SUM(tgt_val_p),0)*100,1)
+- Secondary Sales     = SUM(sales_valu)
+- Secondary Target    = SUM(tgt_val_s)
+- Secondary Ach%      = ROUND(SUM(sales_valu)/NULLIF(SUM(tgt_val_s),0)*100,1)
+- FOC Value           = SUM(foc_value)   ← NOT foc_value_, NOT foc_val_n
+- FOC Qty             = SUM(foc_qty__s + cn_qty)
+- Net Secondary       = SUM(sales_valu) - SUM(foc_val_n)
+- Total Secondary     = SUM(sales_valu) - SUM(foc_val_n) + SUM(foc_value)
+- Total Expenses      = SUM(foc_value) + SUM(sample_exp) + SUM(mrkt_exp) + SUM(camp_exp)
+- Sale Primary        = SUM(sale_sales)
+- Returning Primary   = SUM(gri_sales)   ← negative values
+- RDSI Primary        = SUM(rdsi_sales)  ← negative values
+- Net Primary         = SUM(net_sales_)
+- Total Returning     = SUM(return_amt)  ← negative values
+- Expired Returning   = SUM(expired)
+- Near 3m expiry      = SUM(near_3)
+- Near 6m expiry      = SUM(near_6)
+- Near 9m expiry      = SUM(near_9)
+- Long Expiry (>9m)   = SUM(return_amt)-SUM(expired)-SUM(near_3)-SUM(near_6)-SUM(near_9)
+- PAP Patients        = SUM(no_patient) * 1000
+- DCPP Patients       = SUM(dc_patient) * 1000
+- Exclude inactive    = WHERE item_name NOT LIKE '(INACTIVE)%'
+
 FY values: '2022-2023','2023-2024','2024-2025','2025-2026','2026-2027'
-Segments: ABX,GASTRO,GYNAE,NEURO,ORTHO,WELLNESS
-HQs (hq_new): AGRA,ALIGARH,BAREILLY,BIJNOR,CHANDAUSI,DEHRADUN,DEORIA,GHAZIABAD,GONDA,GORAKHPUR,HALDWANI,HARDA,JHANSI,MEERUT,MORADABAD
-ZBMs: RBM WEST, ZBM EAST, ZBM MP
+Segments (seg): ABX, GASTRO, GYNAE, NEURO, ORTHO, WELLNESS
+ZBMs: 'RBM WEST', 'ZBM EAST', 'ZBM MP'
+HQs (hq_new): AGRA, ALIGARH, BAREILLY, BIJNOR, CHANDAUSI, DEHRADUN, DEORIA, GHAZIABAD, GONDA, GORAKHPUR, HALDWANI, HARDA, JHANSI, MEERUT, MORADABAD
 `.trim();
 
-const NL_PROMPT = (question: string) => `
-You are a SQL generator for DuckDB. Generate ONLY a valid DuckDB SQL query. No explanation, no markdown, no backticks.
-If you are unsure how to map the question to columns, respond with: CLARIFY: <your question>
+const NL_EXPLAIN_PROMPT = (question: string) => `
+You are a data analyst for Shomed Remedies (pharma company). Generate a DuckDB SQL query to answer the user's question.
 
 ${SCHEMA_HINT}
+
+Respond in EXACTLY this format — two parts separated by a blank line:
+EXPLANATION: [1-3 sentences explaining in plain English what data you are fetching and which columns/formulas you are using]
+
+SQL:
+[valid DuckDB SQL — no markdown, no backticks, no semicolon at end]
+
+If the question is ambiguous, respond with: CLARIFY: [one question to resolve ambiguity]
 
 User question: ${question}
 `.trim();
@@ -37,12 +66,18 @@ ${sql}
 `.trim();
 
 const REFINE_PROMPT = (currentSql: string, instruction: string, reportTitle: string) => `
-You are a DuckDB SQL editor. Modify the query below according to the user's instruction.
-Output ONLY the complete modified SQL — no markdown, no backticks, no explanation.
-Preserve the single-table model (FROM data) unless the user explicitly asks for joins on 'data'.
-If the instruction is ambiguous or unsafe, respond with: CLARIFY: <one-line question>
+You are a DuckDB SQL editor for Shomed Remedies MIS.
+Modify the query below according to the user's instruction.
 
 ${SCHEMA_HINT}
+
+Respond in EXACTLY this format:
+EXPLANATION: [1-2 sentences describing what you changed and why]
+
+SQL:
+[complete modified SQL — no markdown, no backticks]
+
+If the instruction is ambiguous, respond with: CLARIFY: [one question]
 
 Report: ${reportTitle}
 
@@ -64,13 +99,27 @@ async function callGroq(prompt: string): Promise<string> {
   const completion = await client.chat.completions.create({
     model: 'llama-3.3-70b-versatile',
     messages: [{ role: 'user', content: prompt }],
-    max_tokens: 512,
+    max_tokens: 768,
   });
   return completion.choices[0].message.content?.trim() ?? '';
 }
 
-export async function generateSql(question: string): Promise<{ sql?: string; clarify?: string }> {
-  const prompt = NL_PROMPT(question);
+function parseExplanationAndSql(response: string): { sql?: string; explanation?: string; clarify?: string } {
+  if (response.startsWith('CLARIFY:')) {
+    return { clarify: response.replace('CLARIFY:', '').trim() };
+  }
+  // Strip any accidental markdown fences
+  const clean = response.replace(/^```(?:sql)?\s*/im, '').replace(/\s*```$/im, '').trim();
+  const explMatch = clean.match(/^EXPLANATION:\s*([\s\S]*?)\n\nSQL:\s*\n([\s\S]+)$/i);
+  if (explMatch) {
+    return { explanation: explMatch[1].trim(), sql: explMatch[2].trim() };
+  }
+  // Fallback: no explanation, treat whole response as SQL
+  return { sql: clean };
+}
+
+export async function generateSqlWithExplanation(question: string): Promise<{ sql?: string; explanation?: string; clarify?: string }> {
+  const prompt = NL_EXPLAIN_PROMPT(question);
   let response: string;
   try {
     response = await callGemini(prompt);
@@ -78,15 +127,20 @@ export async function generateSql(question: string): Promise<{ sql?: string; cla
     console.error('Gemini failed, falling back to Groq:', e);
     response = await callGroq(prompt);
   }
-  if (response.startsWith('CLARIFY:')) return { clarify: response.replace('CLARIFY:', '').trim() };
-  return { sql: response };
+  return parseExplanationAndSql(response);
+}
+
+// Keep original for backward compat with existing reports page
+export async function generateSql(question: string): Promise<{ sql?: string; clarify?: string }> {
+  const result = await generateSqlWithExplanation(question);
+  return { sql: result.sql, clarify: result.clarify };
 }
 
 export async function refineSql(
   currentSql: string,
   instruction: string,
   reportTitle: string,
-): Promise<{ sql?: string; clarify?: string }> {
+): Promise<{ sql?: string; explanation?: string; clarify?: string }> {
   const prompt = REFINE_PROMPT(currentSql, instruction, reportTitle);
   let response: string;
   try {
@@ -95,10 +149,7 @@ export async function refineSql(
     console.error('Gemini failed, falling back to Groq:', e);
     response = await callGroq(prompt);
   }
-  // Some models wrap SQL in ```sql ... ``` despite the instruction; strip it.
-  response = response.replace(/^```(?:sql)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  if (response.startsWith('CLARIFY:')) return { clarify: response.replace('CLARIFY:', '').trim() };
-  return { sql: response };
+  return parseExplanationAndSql(response);
 }
 
 export async function convertPowerBiSql(sql: string): Promise<string> {
