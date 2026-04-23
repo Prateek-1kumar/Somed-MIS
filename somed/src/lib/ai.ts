@@ -101,7 +101,9 @@ async function callGroq(prompt: string): Promise<string> {
     messages: [{ role: 'user', content: prompt }],
     max_tokens: 768,
   });
-  return completion.choices[0].message.content?.trim() ?? '';
+  const content = completion.choices[0].message.content;
+  if (!content) throw new Error('Groq returned no content');
+  return content.trim();
 }
 
 function parseExplanationAndSql(response: string): { sql?: string; explanation?: string; clarify?: string } {
@@ -109,8 +111,8 @@ function parseExplanationAndSql(response: string): { sql?: string; explanation?:
     return { clarify: response.replace('CLARIFY:', '').trim() };
   }
   // Strip any accidental markdown fences
-  const clean = response.replace(/^```(?:sql)?\s*/im, '').replace(/\s*```$/im, '').trim();
-  const explMatch = clean.match(/^EXPLANATION:\s*([\s\S]*?)\n\nSQL:\s*\n([\s\S]+)$/i);
+  const clean = response.replace(/^```(?:sql)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  const explMatch = clean.match(/^EXPLANATION:\s*([\s\S]*?)\n[\s\r]*\nSQL:\s*\n([\s\S]+)$/i);
   if (explMatch) {
     return { explanation: explMatch[1].trim(), sql: explMatch[2].trim() };
   }
@@ -154,10 +156,12 @@ export async function refineSql(
 
 export async function convertPowerBiSql(sql: string): Promise<string> {
   const prompt = PB_PROMPT(sql);
+  let response: string;
   try {
-    return await callGemini(prompt);
+    response = await callGemini(prompt);
   } catch (e) {
     console.error('Gemini failed, falling back to Groq:', e);
-    return await callGroq(prompt);
+    response = await callGroq(prompt);
   }
+  return response.replace(/^```(?:sql)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
 }
