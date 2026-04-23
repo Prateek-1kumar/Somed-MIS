@@ -44,13 +44,14 @@ const SUGGESTIONS = [
 ];
 
 export default function ChatPage() {
-  const { query } = useDuckDb();
+  const { query, ready } = useDuckDb();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [refineInputs, setRefineInputs] = useState<Record<number, string>>({});
   const [showRefine, setShowRefine] = useState<Record<number, boolean>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
+  const msgIdRef = useRef(0);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -58,7 +59,7 @@ export default function ChatPage() {
     const q = (question ?? input).trim();
     if (!q || loading) return;
     setInput('');
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', text: q }]);
+    setMessages(prev => [...prev, { id: ++msgIdRef.current, role: 'user', text: q }]);
     setLoading(true);
     try {
       const res = await fetch('/api/nl-to-sql', {
@@ -68,7 +69,7 @@ export default function ChatPage() {
       });
       const data = await res.json() as { sql?: string; explanation?: string; clarify?: string; error?: string };
       setMessages(prev => [...prev, {
-        id: Date.now() + 1,
+        id: ++msgIdRef.current,
         role: 'ai',
         sql: data.sql,
         explanation: data.explanation,
@@ -77,7 +78,7 @@ export default function ChatPage() {
         confirmed: false,
       }]);
     } catch (e) {
-      setMessages(prev => [...prev, { id: Date.now() + 1, role: 'ai', error: String(e) }]);
+      setMessages(prev => [...prev, { id: ++msgIdRef.current, role: 'ai', error: String(e) }]);
     } finally {
       setLoading(false);
     }
@@ -91,7 +92,7 @@ export default function ChatPage() {
       const rows = await query(msg.sql);
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, rows, ran: true, error: undefined } : m));
     } catch (e) {
-      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, error: String(e) } : m));
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, confirmed: false, error: String(e) } : m));
     }
   };
 
@@ -99,8 +100,6 @@ export default function ChatPage() {
     const instruction = refineInputs[msgId]?.trim();
     const msg = messages.find(m => m.id === msgId);
     if (!instruction || !msg?.sql) return;
-    setRefineInputs(prev => ({ ...prev, [msgId]: '' }));
-    setShowRefine(prev => ({ ...prev, [msgId]: false }));
     setLoading(true);
     try {
       const res = await fetch('/api/refine-sql', {
@@ -108,7 +107,13 @@ export default function ChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentSql: msg.sql, instruction, reportTitle: 'Chat' }),
       });
-      const data = await res.json() as { sql?: string; explanation?: string; clarify?: string };
+      const data = await res.json() as { sql?: string; explanation?: string; clarify?: string; error?: string };
+      if (data.error) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, error: data.error } : m));
+        return;
+      }
+      setRefineInputs(prev => ({ ...prev, [msgId]: '' }));
+      setShowRefine(prev => ({ ...prev, [msgId]: false }));
       setMessages(prev => prev.map(m =>
         m.id === msgId
           ? { ...m, sql: data.sql ?? m.sql, explanation: data.explanation ?? m.explanation, clarify: data.clarify, confirmed: false, rows: undefined, ran: false }
@@ -234,7 +239,8 @@ export default function ChatPage() {
                       <div className="px-4 py-3 border-t border-[var(--border)] bg-[var(--bg-surface-raised)]/40 flex flex-wrap gap-2 items-center">
                         <button
                           onClick={() => confirm(msg.id)}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-[var(--text-primary)] text-[var(--bg-surface)] rounded-lg text-[13px] font-semibold shadow-sm hover:opacity-90 transition-opacity"
+                          disabled={!ready}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-[var(--text-primary)] text-[var(--bg-surface)] rounded-lg text-[13px] font-semibold shadow-sm hover:opacity-90 disabled:opacity-40 transition-opacity"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7"/>
@@ -294,7 +300,7 @@ export default function ChatPage() {
                         </button>
                         {msg.ran && (
                           <button
-                            onClick={() => saveSql(msg.sql!)}
+                            onClick={() => msg.sql && saveSql(msg.sql)}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                           >
                             Save Report
