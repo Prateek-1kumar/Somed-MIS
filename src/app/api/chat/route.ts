@@ -13,7 +13,7 @@ import { runAgent } from '@/lib/agent/loop';
 import type { ConversationTurn, AgentEvent } from '@/lib/agent/types';
 import { getServerDb } from '@/lib/server-duckdb';
 import { createStore, vercelBlobGoldenProvider } from '@/lib/golden-examples';
-import { createGeminiWithFallback } from '@/lib/agent/gemini-adapter';
+import { createModelFactory } from '@/lib/agent/model-factory';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -44,12 +44,13 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY is not set on the server' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const groqApiKey = process.env.GROQ_API_KEY;
+  if (!geminiApiKey && !groqApiKey) {
+    return new Response(
+      JSON.stringify({ error: 'No model credentials — set GEMINI_API_KEY and/or GROQ_API_KEY' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    );
   }
 
   const history = (body.history ?? []).slice(-HISTORY_CAP);
@@ -60,7 +61,13 @@ export async function POST(req: NextRequest) {
       try {
         const db = await getServerDb();
         const goldenStore = createStore(vercelBlobGoldenProvider);
-        const createModel = createGeminiWithFallback(apiKey);
+        const createModel = createModelFactory({
+          geminiApiKey,
+          groqApiKey,
+          onFallback: (from, to, reason) => {
+            console.warn(`[chat] ${from} failed, falling back to ${to}: ${reason}`);
+          },
+        });
 
         for await (const event of runAgent(
           { userMessage: message, history },
@@ -69,7 +76,20 @@ export async function POST(req: NextRequest) {
           controller.enqueue(encoder.encode(encodeSse(event)));
         }
       } catch (e) {
-        const event: AgentEvent = { type: 'error', message: String(e) };
+        const raw = String(e);
+        // Quota / rate-limit messages are ugly and alarming. Surface a
+        // friendly message but keep the raw error in console logs.
+        let friendly = raw;
+        if (/429|quota|rate.?limit|resource_exhausted|too many requests/i.test(raw)) {
+          friendly =
+            'All configured AI models are rate-limited or out of quota right now. '
+            + 'Wait a minute and try again, or add GROQ_API_KEY (free tier is generous) '
+            + 'as a fallback in your environment.';
+        } else if (/no CSV/i.test(raw)) {
+          friendly = 'No data uploaded yet. Upload a CSV from /upload first.';
+        }
+        console.error('[chat] agent loop failed:', raw);
+        const event: AgentEvent = { type: 'error', message: friendly };
         controller.enqueue(encoder.encode(encodeSse(event)));
       } finally {
         controller.close();

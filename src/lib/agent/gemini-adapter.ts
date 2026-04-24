@@ -153,3 +153,16 @@ export function createGeminiWithFallback(apiKey: string): () => ModelAdapter {
     };
   };
 }
+
+/** Is this error a rate-limit / quota error we should fall over on? */
+export function isQuotaOrRateLimitError(e: unknown): boolean {
+  const msg = String((e as { message?: string } | undefined)?.message ?? e ?? '').toLowerCase();
+  return (
+    msg.includes('429') ||
+    msg.includes('quota') ||
+    msg.includes('rate limit') ||
+    msg.includes('rate-limit') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('too many requests')
+  );
+}
