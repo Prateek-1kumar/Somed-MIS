@@ -86,10 +86,10 @@ export async function POST(req: NextRequest) {
             + 'Wait a minute and try again.';
         } else if (/tool_use_failed|tool call validation|malformed tool/i.test(raw)) {
           friendly =
-            'The fallback Groq model had trouble formatting tool calls. This usually '
-            + 'clears in a minute — retry the question. If it keeps happening, the '
-            + 'primary Gemini key needs quota, or switch the Groq model in '
-            + 'src/lib/agent/groq-adapter.ts.';
+            'Every configured fallback model produced malformed tool calls on this '
+            + 'question. Usually a quirk for complex multi-step queries — try a '
+            + 'simpler rephrasing, or wait until the primary Gemini model quota '
+            + 'refreshes (it handles multi-step SQL cleanly).';
         } else if (/no CSV/i.test(raw)) {
           friendly = 'No data uploaded yet. Upload a CSV from /upload first.';
         }

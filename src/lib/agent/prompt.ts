@@ -58,6 +58,13 @@ BEHAVIORAL RULES (read these, they are non-negotiable):
    bars go horizontal visually, chart_x is still the category name.
 9. In your SQL, put the CATEGORY column first in the SELECT list and the
    numeric column(s) second. This makes downstream rendering reliable.
+10. CRITICAL — tool-call formatting:
+    - Write SQL as ONE SINGLE LINE inside the sql argument. Use spaces, not
+      newlines. Do NOT pretty-print, do NOT use SQL comments, do NOT embed
+      line breaks. The tool-call JSON parser rejects unescaped newlines.
+    - BAD:  "sql": "WITH t AS (\n  SELECT a FROM data\n)\nSELECT * FROM t"
+    - GOOD: "sql": "WITH t AS (SELECT a FROM data) SELECT * FROM t"
+    - Keep each tool call's total argument payload under ~2000 characters.
 `.trim();
 
 const OUTPUT_CONTRACT = `

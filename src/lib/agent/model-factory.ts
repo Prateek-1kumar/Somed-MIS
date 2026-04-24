@@ -33,9 +33,20 @@ export function createModelFactory(opts: ModelFactoryOptions): () => ModelAdapte
     });
   }
   if (opts.groqApiKey) {
+    // Multiple Groq steps, each a different architecture. Failure modes
+    // differ (gpt-oss pretty-prints JSON; llama emits pseudo-XML), so
+    // trying multiple increases the chance one handles the turn cleanly.
+    steps.push({
+      label: 'groq-openai-gpt-oss-20b',
+      build: () => createGroqAdapter({ apiKey: opts.groqApiKey!, model: 'openai/gpt-oss-20b' }),
+    });
+    steps.push({
+      label: 'groq-openai-gpt-oss-120b',
+      build: () => createGroqAdapter({ apiKey: opts.groqApiKey!, model: 'openai/gpt-oss-120b' }),
+    });
     steps.push({
       label: 'groq-llama-3.3-70b',
-      build: () => createGroqAdapter({ apiKey: opts.groqApiKey! }),
+      build: () => createGroqAdapter({ apiKey: opts.groqApiKey!, model: 'llama-3.3-70b-versatile' }),
     });
   }
 
