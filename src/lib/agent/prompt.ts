@@ -51,6 +51,13 @@ BEHAVIORAL RULES (read these, they are non-negotiable):
    For single-number answers, use chart_type "kpi".
    For 2D breakdowns (e.g., by HQ × segment), use "stacked_bar".
    When the data is best shown as a table, use "table_only" (no chart).
+8. When setting chart_x: it is ALWAYS the CATEGORY column (text grouping),
+   NEVER the numeric value column. For "top 10 HQs by sales" with
+   SELECT hq_new, SUM(sales_valu) AS secondary_sales, chart_x = "hq_new"
+   (not "secondary_sales"). This rule applies to hbar too — even though
+   bars go horizontal visually, chart_x is still the category name.
+9. In your SQL, put the CATEGORY column first in the SELECT list and the
+   numeric column(s) second. This makes downstream rendering reliable.
 `.trim();
 
 const OUTPUT_CONTRACT = `
