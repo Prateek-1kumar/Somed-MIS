@@ -14,6 +14,7 @@ import {
   type FunctionCall,
   type Part,
   type Content,
+  type Schema,
 } from '@google/generative-ai';
 import type {
   ModelAdapter,
@@ -24,23 +25,24 @@ import type {
   ConversationTurn,
 } from './types';
 
-function toGeminiSchemaType(t: string): SchemaType {
-  switch (t) {
-    case 'string':  return SchemaType.STRING;
-    case 'number':  return SchemaType.NUMBER;
-    case 'integer': return SchemaType.INTEGER;
-    case 'boolean': return SchemaType.BOOLEAN;
-    default:        return SchemaType.STRING;
+function toPropertySchema(spec: { type: string; description?: string }): Schema {
+  switch (spec.type) {
+    case 'number':
+      return { type: SchemaType.NUMBER, description: spec.description };
+    case 'integer':
+      return { type: SchemaType.INTEGER, description: spec.description };
+    case 'boolean':
+      return { type: SchemaType.BOOLEAN, description: spec.description };
+    case 'string':
+    default:
+      return { type: SchemaType.STRING, description: spec.description };
   }
 }
 
 function toGeminiDeclaration(tool: ToolDefinition): FunctionDeclaration {
-  const properties: Record<string, { type: SchemaType; description?: string }> = {};
+  const properties: Record<string, Schema> = {};
   for (const [name, spec] of Object.entries(tool.parameters.properties)) {
-    properties[name] = {
-      type: toGeminiSchemaType(spec.type),
-      description: spec.description,
-    };
+    properties[name] = toPropertySchema(spec);
   }
   return {
     name: tool.name,
