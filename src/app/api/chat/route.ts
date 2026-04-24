@@ -46,9 +46,16 @@ export async function POST(req: NextRequest) {
 
   const geminiApiKey = process.env.GEMINI_API_KEY;
   const groqApiKey = process.env.GROQ_API_KEY;
-  if (!geminiApiKey && !groqApiKey) {
+  const cerebrasApiKey = process.env.CEREBRAS_API_KEY;
+  const openrouterApiKey = process.env.OPENROUTER_API_KEY;
+  const xaiApiKey = process.env.XAI_API_KEY;
+  if (!geminiApiKey && !groqApiKey && !cerebrasApiKey && !openrouterApiKey && !xaiApiKey) {
     return new Response(
-      JSON.stringify({ error: 'No model credentials — set GEMINI_API_KEY and/or GROQ_API_KEY' }),
+      JSON.stringify({
+        error:
+          'No model credentials. Set at least one of: GEMINI_API_KEY, '
+          + 'CEREBRAS_API_KEY, OPENROUTER_API_KEY, GROQ_API_KEY, XAI_API_KEY',
+      }),
       { status: 500, headers: { 'Content-Type': 'application/json' } },
     );
   }
@@ -64,6 +71,9 @@ export async function POST(req: NextRequest) {
         const createModel = createModelFactory({
           geminiApiKey,
           groqApiKey,
+          cerebrasApiKey,
+          openrouterApiKey,
+          xaiApiKey,
           onFallback: (from, to, reason) => {
             console.warn(`[chat] ${from} failed, falling back to ${to}: ${reason}`);
           },

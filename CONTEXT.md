@@ -76,11 +76,16 @@ src/
 
 ## Env vars needed
 ```
-GEMINI_API_KEY=
-GROQ_API_KEY=
+# Data storage (required)
 BLOB_READ_WRITE_TOKEN=     # from Vercel Blob store
-ACCUMULATED_CSV_URL=       # public URL of accumulated.csv blob (set after first upload)
-QUERIES_JSON_URL=          # public URL of saved_queries.json blob (set after first save)
+
+# AI models — at least ONE is required; more = better fallback chain.
+# Chain order: Gemini → Cerebras → OpenRouter → Groq → xAI.
+GEMINI_API_KEY=            # https://aistudio.google.com/apikey — free tier, best quality when quota available
+CEREBRAS_API_KEY=          # https://cloud.cerebras.ai — free tier with Llama 4 Scout/Maverick; fast + reliable tool use
+OPENROUTER_API_KEY=        # https://openrouter.ai — aggregator, :free suffix models have daily caps but work well
+GROQ_API_KEY=              # https://console.groq.com — fast but tool-call output occasionally malformed
+XAI_API_KEY=               # optional — https://x.ai/api — Grok models
 ```
 
 ## No commits policy
