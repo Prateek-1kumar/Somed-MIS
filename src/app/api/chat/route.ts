@@ -83,8 +83,13 @@ export async function POST(req: NextRequest) {
         if (/429|quota|rate.?limit|resource_exhausted|too many requests/i.test(raw)) {
           friendly =
             'All configured AI models are rate-limited or out of quota right now. '
-            + 'Wait a minute and try again, or add GROQ_API_KEY (free tier is generous) '
-            + 'as a fallback in your environment.';
+            + 'Wait a minute and try again.';
+        } else if (/tool_use_failed|tool call validation|malformed tool/i.test(raw)) {
+          friendly =
+            'The fallback Groq model had trouble formatting tool calls. This usually '
+            + 'clears in a minute — retry the question. If it keeps happening, the '
+            + 'primary Gemini key needs quota, or switch the Groq model in '
+            + 'src/lib/agent/groq-adapter.ts.';
         } else if (/no CSV/i.test(raw)) {
           friendly = 'No data uploaded yet. Upload a CSV from /upload first.';
         }

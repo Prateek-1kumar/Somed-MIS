@@ -1,7 +1,10 @@
 // Groq model adapter — last-resort fallback when Gemini quota is exhausted.
 //
 // Uses Groq's OpenAI-compatible chat completions API with tool_calls support.
-// Model: llama-3.3-70b-versatile (has reasonable tool-use reliability).
+// Default model: `openai/gpt-oss-120b` — trained specifically for proper
+// OpenAI-format tool calling. Llama 3.3 70B has a known failure mode where
+// it emits <function=name{args}> pseudo-XML that Groq's server rejects with
+// tool_use_failed. gpt-oss avoids this.
 
 import Groq from 'groq-sdk';
 import type {
@@ -74,20 +77,37 @@ export interface GroqAdapterOptions {
 
 export function createGroqAdapter(opts: GroqAdapterOptions): ModelAdapter {
   const client = new Groq({ apiKey: opts.apiKey });
-  const modelName = opts.model ?? 'llama-3.3-70b-versatile';
+  const modelName = opts.model ?? 'openai/gpt-oss-120b';
 
   // Groq API is stateless — we manage the message history manually.
   let messages: GroqMessage[] = [];
   let tools: ReturnType<typeof toGroqTool>[] = [];
 
   async function complete(): Promise<ModelRoundTrip> {
-    const resp = await client.chat.completions.create({
-      model: modelName,
-      messages: messages as never, // SDK types are narrower than our union
-      tools,
-      tool_choice: 'auto',
-      max_tokens: 1024,
-    });
+    let resp;
+    try {
+      resp = await client.chat.completions.create({
+        model: modelName,
+        messages: messages as never, // SDK types are narrower than our union
+        tools,
+        tool_choice: 'auto',
+        max_tokens: 1024,
+      });
+    } catch (e) {
+      // Groq returns 400 with code: tool_use_failed when the model emits
+      // malformed tool calls (e.g., <function=name{args}> pseudo-XML from
+      // some Llama variants). Re-throw with a diagnosis so the outer chain
+      // can classify + the friendly-error mapper in the route picks it up.
+      const msg = String((e as { message?: string } | undefined)?.message ?? e ?? '');
+      if (/tool_use_failed|tool call validation/i.test(msg)) {
+        throw new Error(
+          `Groq model ${modelName} emitted malformed tool calls (tool_use_failed). `
+          + `If this keeps happening on ${modelName}, try another model via `
+          + `createGroqAdapter({ model: 'openai/gpt-oss-20b' }). Raw: ${msg.slice(0, 300)}`,
+        );
+      }
+      throw e;
+    }
     const choice = resp.choices[0];
     const msg = choice?.message;
     if (!msg) return { kind: 'text', text: '' };
