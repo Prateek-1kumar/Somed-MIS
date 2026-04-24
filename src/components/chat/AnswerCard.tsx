@@ -39,7 +39,7 @@ interface Props {
 export default function AnswerCard({ answer, rows, rowsError }: Props) {
   const chartRef = useRef<HTMLDivElement>(null);
   const mappedChartType = mapChartType(answer.chart_type);
-  const showChart = rows && rows.length > 0 && mappedChartType !== 'table-only' && mappedChartType !== 'kpi';
+  const showChart = rows && rows.length > 0 && mappedChartType !== 'table-only' && answer.chart_type !== 'kpi';
   const showTable = rows && rows.length > 0 && answer.chart_type !== 'kpi';
 
   return (
@@ -66,7 +66,7 @@ export default function AnswerCard({ answer, rows, rowsError }: Props) {
         </div>
       )}
 
-      {showChart && mappedChartType !== 'kpi' && (
+      {showChart && (
         <div ref={chartRef} className="pt-2">
           <ReportChart
             rows={rows!}

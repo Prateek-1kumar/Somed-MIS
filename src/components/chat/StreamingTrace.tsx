@@ -46,11 +46,11 @@ export default function StreamingTrace({ entries, live = false, defaultExpanded 
                 <div key={i} className="text-[var(--accent)]">
                   <span className="text-[var(--text-muted)]">🔧</span>{' '}
                   <span className="font-semibold">{e.tool}</span>
-                  {e.args && (
+                  {e.args !== undefined && e.args !== null ? (
                     <span className="text-[var(--text-muted)]">
                       {' '}({truncate(JSON.stringify(e.args), 100)})
                     </span>
-                  )}
+                  ) : null}
                 </div>
               );
             }
