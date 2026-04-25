@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import Papa from 'papaparse';
-import { upload } from '@vercel/blob/client';
 import UploadZone from '@/components/UploadZone';
 import { useDuckDb } from '@/lib/DuckDbContext';
 import { incrementDataVersion } from '@/lib/persistence';
@@ -93,18 +92,17 @@ export default function UploadPage() {
       const newDataLines = hasFiltered ? newLines.slice(1).join('\n') : pendingCsv;
       const accumulated = hasFiltered ? `${filteredExisting.trimEnd()}\n${newDataLines}` : pendingCsv;
 
-      // Direct browser-to-Vercel-Blob upload. Vercel serverless functions cap
-      // request bodies at 4.5 MB, so we can't POST the full CSV through an API
-      // route. upload() fetches a short-lived token from /api/blob/upload-token
-      // and streams the body straight to blob storage in multipart parts.
-      await upload('accumulated.csv', accumulated, {
-        access: 'private',
-        contentType: 'text/csv',
-        handleUploadUrl: '/api/blob/upload-token',
-        multipart: true,
-        clientPayload: JSON.stringify({ header: EXPECTED_HEADER }),
-        onUploadProgress: ({ percentage }) => setUploadProgress(percentage),
+      setUploadProgress(0);
+      const appendRes = await fetch('/api/blob/append', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accumulatedCsv: accumulated }),
       });
+      if (!appendRes.ok) {
+        const err = await appendRes.json().catch(() => ({ error: `HTTP ${appendRes.status}` })) as { error?: string };
+        throw new Error(err.error ?? `Upload failed: ${appendRes.status}`);
+      }
+      setUploadProgress(100);
 
       // Copy the private blob to a public CDN blob so the dashboard can load
       // it directly without going through a serverless proxy (which times out
@@ -192,9 +190,7 @@ export default function UploadPage() {
             onMouseOver={e => { if (!uploading) e.currentTarget.style.backgroundColor = 'var(--accent-hover)' }}
             onMouseOut={e => e.currentTarget.style.backgroundColor = 'var(--accent)'}
             >
-              {uploading
-                ? (uploadProgress !== null ? `Uploading… ${Math.round(uploadProgress)}%` : 'Preparing upload…')
-                : 'Confirm & Append'}
+              {uploading ? 'Uploading…' : 'Confirm & Append'}
             </button>
           </div>
         )}
