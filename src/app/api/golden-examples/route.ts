@@ -9,7 +9,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createStore, vercelBlobGoldenProvider, type NewGoldenExampleInput } from '@/lib/golden-examples';
-import { getServerDb } from '@/lib/server-duckdb';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -37,6 +36,7 @@ export async function POST(req: NextRequest) {
     // text-only tag extraction.
     let dictionary;
     try {
+      const { getServerDb } = await import('@/lib/server-duckdb');
       const db = await getServerDb();
       dictionary = db.dictionary;
     } catch {

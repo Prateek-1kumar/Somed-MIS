@@ -11,7 +11,6 @@
 import type { NextRequest } from 'next/server';
 import { runAgent } from '@/lib/agent/loop';
 import type { ConversationTurn, AgentEvent } from '@/lib/agent/types';
-import { getServerDb } from '@/lib/server-duckdb';
 import { createStore, vercelBlobGoldenProvider } from '@/lib/golden-examples';
 import { createModelFactory } from '@/lib/agent/model-factory';
 
@@ -66,6 +65,7 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        const { getServerDb } = await import('@/lib/server-duckdb');
         const db = await getServerDb();
         const goldenStore = createStore(vercelBlobGoldenProvider);
         const createModel = createModelFactory({
