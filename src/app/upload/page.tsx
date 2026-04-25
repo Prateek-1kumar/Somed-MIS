@@ -66,15 +66,9 @@ export default function UploadPage() {
     setUploadProgress(null);
     setUploadError(null);
     try {
-      const urlRes = await fetch('/api/blob/url');
-      if (!urlRes.ok) throw new Error(`Failed to get blob URL: ${urlRes.status}`);
-      const { url: blobUrl } = await urlRes.json() as { url: string | null };
-      let existing = '';
-      if (blobUrl) {
-        const existingRes = await fetch(blobUrl);
-        if (!existingRes.ok) throw new Error(`Failed to read existing data: ${existingRes.status}`);
-        existing = await existingRes.text();
-      }
+      const existingRes = await fetch('/api/blob/read');
+      if (!existingRes.ok) throw new Error(`Failed to read existing data: ${existingRes.status}`);
+      const existing = await existingRes.text();
       const hasExistingBytes = existing.trim().length > 0;
       // Refuse to append to data with a mismatched schema — that would produce a
       // broken CSV that DuckDB can't parse. Server also validates in the

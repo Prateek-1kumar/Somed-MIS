@@ -1,6 +1,6 @@
 'use client';
 // src/lib/DuckDbContext.tsx
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { initDuckDb, loadCsvData, runQuery, isDataLoaded, createEmptyDataTable } from './duckdb';
 
 interface DuckDbContextValue {
@@ -33,8 +33,16 @@ export function DuckDbProvider({ children, initialCsv }: { children: ReactNode; 
     setReady(true);
   };
 
+  // query changes reference when ready flips true, which causes dashboard
+  // useEffects with [query] in deps to re-fire once DuckDB is initialised.
+  // When not ready it returns [] immediately instead of throwing.
+  const query = useCallback(
+    (sql: string) => ready ? runQuery(sql) : Promise.resolve([]),
+    [ready],
+  );
+
   return (
-    <DuckDbContext.Provider value={{ ready, error, query: runQuery, reload }}>
+    <DuckDbContext.Provider value={{ ready, error, query, reload }}>
       {children}
     </DuckDbContext.Provider>
   );

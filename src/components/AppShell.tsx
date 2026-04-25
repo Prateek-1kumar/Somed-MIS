@@ -16,15 +16,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    fetch('/api/blob/url')
-      .then(r => r.json())
-      .then(async ({ url }: { url: string | null }) => {
-        if (!url) { setCsvLoading(false); return; }
-        const r = await fetch(url);
-        const csv = r.ok ? await r.text() : '';
-        setInitialCsv(csv || null);
-        setCsvLoading(false);
-      })
+    fetch('/api/blob/read')
+      .then(r => { if (!r.ok) return ''; return r.text(); })
+      .then(csv => { setInitialCsv(csv || null); setCsvLoading(false); })
       .catch(() => setCsvLoading(false));
   }, []);
 
