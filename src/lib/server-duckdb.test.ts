@@ -24,8 +24,8 @@ import {
 } from './server-duckdb';
 import { CSV_COLUMNS, CSV_COLUMN_TYPES } from './schema';
 
-// createRequire gives us a CJS-style require in the jest/ts-jest environment.
-const _req = createRequire(__filename);
+// Resolve from project root (works in jest CJS and Next.js Node.js runtime alike).
+const _req = createRequire(path.join(process.cwd(), 'package.json'));
 const _wasmDist = path.dirname(_req.resolve('@duckdb/duckdb-wasm'));
 
 function wasmBundles(): DuckDBBundles {

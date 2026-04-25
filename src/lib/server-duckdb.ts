@@ -28,9 +28,11 @@ const MAX_ROWS_WRAP = 100_000;
 const QUERY_TIMEOUT_MS = 10_000;
 
 // Resolve the duckdb-wasm dist directory at module load time so we can pass
-// absolute WASM binary paths to createDuckDB. The '.' Node export of the
-// package points at duckdb-node.cjs inside dist/.
-const _require = createRequire(import.meta.url);
+// absolute WASM binary paths to createDuckDB. Using process.cwd() as the base
+// avoids import.meta.url (unavailable in jest CJS) and __filename (not typed
+// in ESM TypeScript). The '.' Node export of the package resolves to
+// duckdb-node.cjs inside the dist/ folder.
+const _require = createRequire(path.join(process.cwd(), 'package.json'));
 const _wasmDist = path.dirname(_require.resolve('@duckdb/duckdb-wasm'));
 
 export interface DataDictionary {
