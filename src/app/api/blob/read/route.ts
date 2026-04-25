@@ -5,8 +5,6 @@ import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 // Don't cache — clients need the freshest blob after every upload.
 export const dynamic = 'force-dynamic';
-// Extend timeout for the server-proxy fallback used when the blob is private.
-export const maxDuration = 60;
 
 export async function GET() {
   try {

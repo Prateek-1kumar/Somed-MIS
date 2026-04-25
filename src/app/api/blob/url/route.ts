@@ -4,17 +4,22 @@ import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Returns the pre-signed download URL for the accumulated CSV blob so the
-// client can fetch it directly from blob storage. This avoids streaming large
-// CSVs through a Vercel serverless function, which causes 502 timeouts.
+// Returns the best available blob URL for the accumulated CSV.
+// Prefers accumulated_public.csv (public CDN, browser-fetchable directly).
+// Falls back to accumulated.csv (private, needs server proxy to download).
 export async function GET() {
   try {
-    const { blobs } = await list({ prefix: 'accumulated.csv' });
-    const blob = blobs.find(b => b.pathname === 'accumulated.csv');
+    const { blobs } = await list({ prefix: 'accumulated' });
+    const publicBlob = blobs.find(b => b.pathname === 'accumulated_public.csv');
+    const privateBlob = blobs.find(b => b.pathname === 'accumulated.csv');
+    const blob = publicBlob ?? privateBlob;
     if (!blob) {
-      return NextResponse.json({ url: null });
+      return NextResponse.json({ url: null, isPublic: false });
     }
-    return NextResponse.json({ url: blob.downloadUrl });
+    return NextResponse.json({
+      url: blob.url,
+      isPublic: blob.pathname === 'accumulated_public.csv',
+    });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

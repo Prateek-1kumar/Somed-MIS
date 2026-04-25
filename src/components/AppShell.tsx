@@ -18,13 +18,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const meta = await fetch('/api/blob/url').then(r => r.json()) as { url?: string | null };
-        const url = meta?.url;
-        if (!url) { setCsvLoading(false); return; }
-        // Public blobs: fetch directly from CDN (fast, no serverless timeout).
-        // Private blobs (existing data before migration): fall back to server proxy.
-        let r = await fetch(url);
-        if (!r.ok) r = await fetch('/api/blob/read');
+        const meta = await fetch('/api/blob/url').then(r => r.json()) as { url?: string | null; isPublic?: boolean };
+        if (!meta?.url) { setCsvLoading(false); return; }
+        // Public copy: fetch directly from CDN — fast, no serverless timeout.
+        // Private blob (before first upload with new code): go through server proxy.
+        const r = meta.isPublic ? await fetch(meta.url) : await fetch('/api/blob/read');
         const csv = r.ok ? await r.text() : '';
         setInitialCsv(csv || null);
       } catch { /* leave initialCsv null */ }

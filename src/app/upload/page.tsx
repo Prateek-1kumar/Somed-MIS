@@ -66,13 +66,12 @@ export default function UploadPage() {
     setUploadProgress(null);
     setUploadError(null);
     try {
-      const meta = await fetch('/api/blob/url').then(r => r.json()) as { url?: string | null };
+      const meta = await fetch('/api/blob/url').then(r => r.json()) as { url?: string | null; isPublic?: boolean };
       const blobUrl = meta?.url;
       let existing = '';
       if (blobUrl) {
-        // Public blobs: fetch directly from CDN. Private blobs: server proxy fallback.
-        let r = await fetch(blobUrl);
-        if (!r.ok) r = await fetch('/api/blob/read');
+        // Public copy (CDN): fetch directly. Private blob: go through server proxy.
+        const r = meta.isPublic ? await fetch(blobUrl) : await fetch('/api/blob/read');
         if (!r.ok) throw new Error(`Failed to read existing data: ${r.status}`);
         existing = await r.text();
       }
@@ -99,13 +98,20 @@ export default function UploadPage() {
       // route. upload() fetches a short-lived token from /api/blob/upload-token
       // and streams the body straight to blob storage in multipart parts.
       await upload('accumulated.csv', accumulated, {
-        access: 'public',
+        access: 'private',
         contentType: 'text/csv',
         handleUploadUrl: '/api/blob/upload-token',
         multipart: true,
         clientPayload: JSON.stringify({ header: EXPECTED_HEADER }),
         onUploadProgress: ({ percentage }) => setUploadProgress(percentage),
       });
+
+      // Copy the private blob to a public CDN blob so the dashboard can load
+      // it directly without going through a serverless proxy (which times out
+      // on large CSVs). Best-effort: a failed copy still leaves the data safe.
+      try {
+        await fetch('/api/blob/copy-public', { method: 'POST' });
+      } catch { /* non-fatal */ }
 
       // Blob is now the source of truth — data is persisted regardless of what
       // happens next. Record the upload history and invalidate caches.
