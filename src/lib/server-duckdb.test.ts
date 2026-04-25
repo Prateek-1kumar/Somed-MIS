@@ -1,10 +1,17 @@
 /**
  * @jest-environment node
  */
-import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { DuckDBConnection, DuckDBInstance } from '@duckdb/node-api';
+import { createRequire } from 'node:module';
+import {
+  createDuckDB,
+  ConsoleLogger,
+  LogLevel,
+  NODE_RUNTIME,
+  type DuckDBConnection,
+  type DuckDBBindingsBase,
+  type DuckDBBundles,
+} from '@duckdb/duckdb-wasm/blocking';
 import {
   validateSelectSql,
   wrapWithLimit,
@@ -17,6 +24,30 @@ import {
 } from './server-duckdb';
 import { CSV_COLUMNS, CSV_COLUMN_TYPES } from './schema';
 
+// createRequire gives us a CJS-style require in the jest/ts-jest environment.
+const _req = createRequire(__filename);
+const _wasmDist = path.dirname(_req.resolve('@duckdb/duckdb-wasm'));
+
+function wasmBundles(): DuckDBBundles {
+  return {
+    mvp: {
+      mainModule: path.join(_wasmDist, 'duckdb-mvp.wasm'),
+      mainWorker: path.join(_wasmDist, 'duckdb-node-mvp.worker.cjs'),
+    },
+    eh: {
+      mainModule: path.join(_wasmDist, 'duckdb-eh.wasm'),
+      mainWorker: path.join(_wasmDist, 'duckdb-node-eh.worker.cjs'),
+    },
+  };
+}
+
+async function openWasm(): Promise<{ wasm: DuckDBBindingsBase; conn: DuckDBConnection }> {
+  const wasm = await createDuckDB(wasmBundles(), new ConsoleLogger(LogLevel.WARNING), NODE_RUNTIME);
+  wasm.open({});
+  const conn = wasm.connect();
+  return { wasm, conn };
+}
+
 function buildFixtureCsv(rows: Partial<Record<string, string | number>>[]): string {
   const header = CSV_COLUMNS.join(',');
   const lines = rows.map(row =>
@@ -26,7 +57,6 @@ function buildFixtureCsv(rows: Partial<Record<string, string | number>>[]): stri
         return CSV_COLUMN_TYPES[col] === 'DOUBLE' ? '0' : '';
       }
       if (typeof v === 'number') return String(v);
-      // Quote strings that contain commas or quotes.
       const s = String(v);
       if (s.includes(',') || s.includes('"')) {
         return `"${s.replace(/"/g, '""')}"`;
@@ -92,7 +122,6 @@ describe('validateSelectSql', () => {
   });
 
   it('ignores forbidden keywords inside string literals', () => {
-    // 'delete' in a string literal should not trigger rejection.
     const r = validateSelectSql("SELECT 'delete me' AS label FROM data");
     expect(r.ok).toBe(true);
   });
@@ -116,26 +145,22 @@ describe('wrapWithLimit', () => {
 });
 
 describe('loadCsvIntoDb + buildDataDictionary', () => {
+  let wasm: DuckDBBindingsBase;
   let connection: DuckDBConnection;
-  let csvPath: string;
 
   beforeAll(async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'somed-test-'));
-    csvPath = path.join(tempDir, 'fixture.csv');
-    await fs.writeFile(csvPath, buildFixtureCsv(SHOVERT_FIXTURE_ROWS), 'utf-8');
-    const instance = await DuckDBInstance.create(':memory:');
-    connection = await instance.connect();
-    await loadCsvIntoDb(connection, csvPath);
+    ({ wasm, conn: connection } = await openWasm());
+    loadCsvIntoDb(wasm, connection, buildFixtureCsv(SHOVERT_FIXTURE_ROWS));
   });
 
-  afterAll(async () => {
-    try { connection.closeSync(); } catch { /* ignore */ }
-    try { await fs.unlink(csvPath); } catch { /* ignore */ }
+  afterAll(() => {
+    try { connection.close(); } catch { /* ignore */ }
   });
 
-  it('loads all fixture rows into the data table', async () => {
-    const r = await connection.runAndReadAll('SELECT COUNT(*) FROM data');
-    expect(Number(r.getRowsJson()[0]?.[0])).toBe(SHOVERT_FIXTURE_ROWS.length);
+  it('loads all fixture rows into the data table', () => {
+    const table = connection.query('SELECT COUNT(*) FROM data');
+    const count = Number(Object.values(table.toArray()[0]?.toJSON() ?? {})[0] ?? 0);
+    expect(count).toBe(SHOVERT_FIXTURE_ROWS.length);
   });
 
   it('computes brand families grouping SHOVERT SKUs', async () => {
@@ -176,26 +201,24 @@ describe('loadCsvIntoDb + buildDataDictionary', () => {
 });
 
 describe('runSafeQuery', () => {
+  let wasm: DuckDBBindingsBase;
   let connection: DuckDBConnection;
 
   beforeAll(async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'somed-rsq-'));
-    const csvPath = path.join(tempDir, 'fixture.csv');
-    await fs.writeFile(csvPath, buildFixtureCsv(SHOVERT_FIXTURE_ROWS), 'utf-8');
-    const instance = await DuckDBInstance.create(':memory:');
-    connection = await instance.connect();
-    await loadCsvIntoDb(connection, csvPath);
+    ({ wasm, conn: connection } = await openWasm());
+    loadCsvIntoDb(wasm, connection, buildFixtureCsv(SHOVERT_FIXTURE_ROWS));
   });
 
   afterAll(() => {
-    try { connection.closeSync(); } catch { /* ignore */ }
+    try { connection.close(); } catch { /* ignore */ }
   });
 
   it('returns rows for a valid SELECT', async () => {
     const r = await runSafeQuery(connection, 'SELECT COUNT(*) AS n FROM data');
     expect(r.error).toBeUndefined();
     expect(r.rowCount).toBe(1);
-    expect(r.rows[0]).toEqual({ n: String(SHOVERT_FIXTURE_ROWS.length) });
+    // COUNT(*) returns a numeric value (BigInt converted to Number)
+    expect(Number(r.rows[0]?.n)).toBe(SHOVERT_FIXTURE_ROWS.length);
   });
 
   it('rejects non-SELECT with a reason', async () => {
@@ -213,18 +236,12 @@ describe('runSafeQuery', () => {
   it('auto-wraps a missing LIMIT', async () => {
     const r = await runSafeQuery(connection, 'SELECT * FROM data');
     expect(r.error).toBeUndefined();
-    // Fixture has 5 rows; LIMIT 100k lets them all through.
     expect(r.rowCount).toBe(SHOVERT_FIXTURE_ROWS.length);
   });
 });
 
 describe('getServerDb singleton', () => {
   const fixtureCsv = buildFixtureCsv(SHOVERT_FIXTURE_ROWS);
-  let tempDir: string;
-
-  beforeAll(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'somed-singleton-'));
-  });
 
   afterEach(async () => {
     await resetServerDb();
@@ -238,8 +255,8 @@ describe('getServerDb singleton', () => {
         return { text: fixtureCsv, version: 'v1' };
       },
     };
-    const a = await getServerDb(provider, tempDir);
-    const b = await getServerDb(provider, tempDir);
+    const a = await getServerDb(provider);
+    const b = await getServerDb(provider);
     expect(a).toBe(b);
     expect(fetchCount).toBe(1);
   });
@@ -248,7 +265,7 @@ describe('getServerDb singleton', () => {
     const provider: CsvProvider = {
       async fetch() { return { text: fixtureCsv, version: '2026-04-24T00:00:00Z' }; },
     };
-    const db = await getServerDb(provider, tempDir);
+    const db = await getServerDb(provider);
     expect(db.dataVersion).toBe('2026-04-24T00:00:00Z');
     expect(db.dictionary.row_count).toBe(SHOVERT_FIXTURE_ROWS.length);
     expect(Object.keys(db.dictionary.brand_families)).toContain('SHOVERT');
@@ -258,7 +275,7 @@ describe('getServerDb singleton', () => {
     const provider: CsvProvider = {
       async fetch() { return { text: fixtureCsv, version: 'v1' }; },
     };
-    const db = await getServerDb(provider, tempDir);
+    const db = await getServerDb(provider);
     const r = await db.runSafe("SELECT item_name FROM data WHERE item_name LIKE 'SHOVERT%'");
     expect(r.error).toBeUndefined();
     expect(r.rowCount).toBe(3);
@@ -266,7 +283,7 @@ describe('getServerDb singleton', () => {
 
   it('throws a helpful error when no CSV exists', async () => {
     const provider: CsvProvider = { async fetch() { return null; } };
-    await expect(getServerDb(provider, tempDir)).rejects.toThrow(/no CSV/);
+    await expect(getServerDb(provider)).rejects.toThrow(/no CSV/);
   });
 
   it('concurrent first-call invocations share a single load', async () => {
@@ -279,9 +296,9 @@ describe('getServerDb singleton', () => {
       },
     };
     const [a, b, c] = await Promise.all([
-      getServerDb(provider, tempDir),
-      getServerDb(provider, tempDir),
-      getServerDb(provider, tempDir),
+      getServerDb(provider),
+      getServerDb(provider),
+      getServerDb(provider),
     ]);
     expect(a).toBe(b);
     expect(b).toBe(c);

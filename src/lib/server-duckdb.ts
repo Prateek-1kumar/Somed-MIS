@@ -1,5 +1,8 @@
 // Server-side DuckDB singleton. Powers the chat agent loop.
 //
+// Uses @duckdb/duckdb-wasm (blocking Node.js bundle) — pure WebAssembly,
+// no native shared library (.so/.dylib) required. Works on Vercel Lambda.
+//
 // Design notes:
 // - One DuckDB instance per warm Node function container. CSV is loaded once
 //   on cold start, reused across requests.
@@ -7,15 +10,28 @@
 //   pages. This module is chat-agent-only.
 // - CSV provider is abstracted so tests can inject an in-memory fixture.
 
-import { DuckDBConnection, DuckDBInstance } from '@duckdb/node-api';
+import {
+  createDuckDB,
+  ConsoleLogger,
+  LogLevel,
+  NODE_RUNTIME,
+  type DuckDBConnection,
+  type DuckDBBindingsBase,
+  type DuckDBBundles,
+} from '@duckdb/duckdb-wasm/blocking';
 import { list } from '@vercel/blob';
-import { promises as fs } from 'node:fs';
-import os from 'node:os';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { CSV_COLUMNS, CSV_COLUMN_TYPES, type CsvColumn } from './schema';
 
 const MAX_ROWS_WRAP = 100_000;
 const QUERY_TIMEOUT_MS = 10_000;
+
+// Resolve the duckdb-wasm dist directory at module load time so we can pass
+// absolute WASM binary paths to createDuckDB. The '.' Node export of the
+// package points at duckdb-node.cjs inside dist/.
+const _require = createRequire(import.meta.url);
+const _wasmDist = path.dirname(_require.resolve('@duckdb/duckdb-wasm'));
 
 export interface DataDictionary {
   generated_at: string;
@@ -125,29 +141,42 @@ export function wrapWithLimit(sql: string, cap = MAX_ROWS_WRAP): string {
   return `SELECT * FROM (${trimmed}) __capped__ LIMIT ${cap}`;
 }
 
+// ── Arrow row conversion ──────────────────────────────────────────────────
+
+// Convert BigInt values to Number so rows are JSON-serializable. DuckDB WASM
+// returns 64-bit integer columns as BigInt in Apache Arrow.
+function arrowRowToObject(row: { toJSON(): Record<string, unknown> }): Record<string, unknown> {
+  const raw = row.toJSON();
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    out[k] = typeof v === 'bigint' ? Number(v) : v;
+  }
+  return out;
+}
+
 // ── Core: load CSV into DuckDB ────────────────────────────────────────────
 
 /**
- * Read the CSV from disk into a DuckDB `data` table with the schema from
- * lib/schema.ts. TRY_CAST is used so malformed numeric cells become NULL
- * instead of failing the whole load (same forgiving behavior as the
- * browser-side DuckDB).
+ * Register the CSV text in DuckDB's virtual filesystem and create a `data`
+ * table from it. Uses registerFileText so no disk I/O is needed.
  */
-export async function loadCsvIntoDb(
+export function loadCsvIntoDb(
+  db: DuckDBBindingsBase,
   connection: DuckDBConnection,
-  csvPath: string,
-): Promise<void> {
+  csvText: string,
+): void {
   const columns = CSV_COLUMNS.map((col: CsvColumn) => {
     const type = CSV_COLUMN_TYPES[col];
     return `'${col}': '${type}'`;
   }).join(', ');
 
-  // Drop any previous table first; idempotent for reload.
-  await connection.run(`DROP TABLE IF EXISTS data`);
-  await connection.run(`
+  const virtualName = 'somed-data.csv';
+  db.registerFileText(virtualName, csvText);
+  connection.query(`DROP TABLE IF EXISTS data`);
+  connection.query(`
     CREATE TABLE data AS
     SELECT * FROM read_csv(
-      '${csvPath.replace(/'/g, "''")}',
+      '${virtualName}',
       columns = {${columns}},
       header = true,
       null_padding = true,
@@ -165,31 +194,33 @@ export async function loadCsvIntoDb(
 export async function buildDataDictionary(
   connection: DuckDBConnection,
 ): Promise<DataDictionary> {
-  const distinctStr = async (col: string, limit: number): Promise<string[]> => {
-    const r = await connection.runAndReadAll(
+  const distinctStr = (col: string, limit: number): string[] => {
+    const table = connection.query(
       `SELECT DISTINCT ${col} FROM data WHERE ${col} IS NOT NULL AND TRIM(${col}) <> '' ORDER BY ${col} LIMIT ${limit}`,
     );
-    return r.getRowsJson().map(row => String(row[0]));
+    return table.toArray().map(row => {
+      const vals = Object.values(row.toJSON());
+      return String(vals[0] ?? '');
+    });
   };
 
-  const [rowCountReader, fy, seg, zbm, hq, doctors, latest] = await Promise.all([
-    connection.runAndReadAll(`SELECT COUNT(*) FROM data`),
-    distinctStr('fy', 50),
-    distinctStr('seg', 50),
-    distinctStr('zbm', 50),
-    distinctStr('hq_new', 200),
-    distinctStr('dr_name', 200),
-    connection.runAndReadAll(
-      `SELECT MAX(yyyymm) FROM data WHERE yyyymm IS NOT NULL AND TRIM(yyyymm) <> ''`,
-    ),
-  ]);
+  const rowCountTable = connection.query(`SELECT COUNT(*) FROM data`);
+  const rowCountVal = Object.values(rowCountTable.toArray()[0]?.toJSON() ?? {})[0];
+  const rowCount = Number(rowCountVal ?? 0);
 
-  const rowCount = Number(rowCountReader.getRowsJson()[0]?.[0] ?? 0);
-  const latestPeriod = (latest.getRowsJson()[0]?.[0] as string | null) ?? null;
+  const fy = distinctStr('fy', 50);
+  const seg = distinctStr('seg', 50);
+  const zbm = distinctStr('zbm', 50);
+  const hq = distinctStr('hq_new', 200);
+  const doctors = distinctStr('dr_name', 200);
 
-  // Brand families: group item_name by prefix before first hyphen/space.
-  // Example: "SHOVERT-8 TAB 10S" → family "SHOVERT".
-  const brandFamiliesReader = await connection.runAndReadAll(`
+  const latestTable = connection.query(
+    `SELECT MAX(yyyymm) FROM data WHERE yyyymm IS NOT NULL AND TRIM(yyyymm) <> ''`,
+  );
+  const latestVal = Object.values(latestTable.toArray()[0]?.toJSON() ?? {})[0];
+  const latestPeriod = (latestVal as string | null) ?? null;
+
+  const brandFamiliesTable = connection.query(`
     SELECT
       UPPER(REGEXP_EXTRACT(item_name, '^[A-Za-z][A-Za-z0-9]*', 0)) AS family,
       item_name
@@ -201,9 +232,10 @@ export async function buildDataDictionary(
     ORDER BY family, item_name
   `);
   const brandFamilies: Record<string, string[]> = {};
-  for (const row of brandFamiliesReader.getRowsJson()) {
-    const family = String(row[0] ?? '');
-    const item = String(row[1] ?? '');
+  for (const row of brandFamiliesTable.toArray()) {
+    const json = row.toJSON() as { family?: unknown; item_name?: unknown };
+    const family = String(json.family ?? '');
+    const item = String(json.item_name ?? '');
     if (!family || !item) continue;
     (brandFamilies[family] ??= []).push(item);
   }
@@ -223,6 +255,9 @@ export async function buildDataDictionary(
 
 // ── Query execution (safe + trusted variants) ─────────────────────────────
 
+// The wasm blocking bundle executes queries synchronously. The timeout is a
+// best-effort guard for the async setup path; it cannot interrupt a running
+// synchronous query but does cap idle wait before execution.
 async function runWithTimeout(
   connection: DuckDBConnection,
   sql: string,
@@ -230,17 +265,19 @@ async function runWithTimeout(
 ): Promise<QueryResult> {
   let timer: NodeJS.Timeout | null = null;
   try {
-    const execution = connection.runAndReadAll(sql);
+    const execution = new Promise<QueryResult>((resolve) => {
+      const table = connection.query(sql);
+      const rows = table.toArray().map(arrowRowToObject);
+      const columns = (table.schema.fields as Array<{ name: string }>).map(f => f.name);
+      resolve({ rows, columns, rowCount: rows.length });
+    });
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(
         () => reject(new Error(`query timeout after ${timeoutMs}ms`)),
         timeoutMs,
       );
     });
-    const reader = await Promise.race([execution, timeout]);
-    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
-    const columns = reader.columnNames();
-    return { rows, columns, rowCount: rows.length };
+    return await Promise.race([execution, timeout]);
   } catch (e) {
     return { rows: [], columns: [], rowCount: 0, error: String(e) };
   } finally {
@@ -289,26 +326,41 @@ export const vercelBlobCsvProvider: CsvProvider = {
 
 interface CachedDb {
   db: ServerDb;
+  wasm: DuckDBBindingsBase;
   connection: DuckDBConnection;
-  csvPath: string;
 }
 
 let _cache: CachedDb | null = null;
 let _loading: Promise<CachedDb> | null = null;
 
-async function buildDb(provider: CsvProvider, csvDir: string): Promise<CachedDb> {
+function getWasmBundles(): DuckDBBundles {
+  return {
+    mvp: {
+      mainModule: path.join(_wasmDist, 'duckdb-mvp.wasm'),
+      mainWorker: path.join(_wasmDist, 'duckdb-node-mvp.worker.cjs'),
+    },
+    eh: {
+      mainModule: path.join(_wasmDist, 'duckdb-eh.wasm'),
+      mainWorker: path.join(_wasmDist, 'duckdb-node-eh.worker.cjs'),
+    },
+  };
+}
+
+async function buildDb(provider: CsvProvider): Promise<CachedDb> {
   const fetched = await provider.fetch();
   if (!fetched) {
     throw new Error('no CSV found in blob storage — upload one first');
   }
-  await fs.mkdir(csvDir, { recursive: true });
-  const csvPath = path.join(csvDir, `somed-${Date.now()}.csv`);
-  await fs.writeFile(csvPath, fetched.text, 'utf-8');
 
-  const instance = await DuckDBInstance.create(':memory:');
-  const connection = await instance.connect();
+  const wasm = await createDuckDB(
+    getWasmBundles(),
+    new ConsoleLogger(LogLevel.WARNING),
+    NODE_RUNTIME,
+  );
+  wasm.open({});
+  const connection = wasm.connect();
 
-  await loadCsvIntoDb(connection, csvPath);
+  loadCsvIntoDb(wasm, connection, fetched.text);
   const dictionary = await buildDataDictionary(connection);
 
   const db: ServerDb = {
@@ -317,7 +369,7 @@ async function buildDb(provider: CsvProvider, csvDir: string): Promise<CachedDb>
     dictionary,
     dataVersion: fetched.version,
   };
-  return { db, connection, csvPath };
+  return { db, wasm, connection };
 }
 
 /**
@@ -326,14 +378,18 @@ async function buildDb(provider: CsvProvider, csvDir: string): Promise<CachedDb>
  *
  * Concurrent callers during cold start share one Promise — we never
  * load the CSV twice in parallel.
+ *
+ * The csvDir parameter is accepted for backward-compatibility but unused;
+ * CSV data is registered in DuckDB's in-memory virtual filesystem.
  */
 export async function getServerDb(
   provider: CsvProvider = vercelBlobCsvProvider,
-  csvDir: string = os.tmpdir(),
+  csvDir?: string,
 ): Promise<ServerDb> {
+  void csvDir;
   if (_cache) return _cache.db;
   if (!_loading) {
-    _loading = buildDb(provider, csvDir)
+    _loading = buildDb(provider)
       .then(result => { _cache = result; return result; })
       .finally(() => { _loading = null; });
   }
@@ -344,8 +400,7 @@ export async function getServerDb(
 /** Force next getServerDb() to reload. Used by upload flow + tests. */
 export async function resetServerDb(): Promise<void> {
   if (_cache) {
-    try { _cache.connection.closeSync(); } catch { /* ignore */ }
-    try { await fs.unlink(_cache.csvPath); } catch { /* ignore */ }
+    try { _cache.connection.close(); } catch { /* ignore */ }
   }
   _cache = null;
   _loading = null;
