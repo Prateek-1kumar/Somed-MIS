@@ -13,7 +13,9 @@ export async function GET() {
     if (!blob) {
       return new NextResponse('', { status: 200, headers: { 'Content-Type': 'text/csv' } });
     }
-    const upstream = await fetch(blob.downloadUrl);
+    const upstream = await fetch(blob.downloadUrl, {
+      headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
+    });
     if (!upstream.ok || !upstream.body) {
       return new NextResponse(`Blob fetch failed: ${upstream.status}`, {
         status: 502,
