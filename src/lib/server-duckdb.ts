@@ -359,6 +359,7 @@ async function buildDb(provider: CsvProvider): Promise<CachedDb> {
     new ConsoleLogger(LogLevel.WARNING),
     NODE_RUNTIME,
   );
+  await wasm.instantiate();
   wasm.open({});
   const connection = wasm.connect();
 

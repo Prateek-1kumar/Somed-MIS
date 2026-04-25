@@ -43,6 +43,7 @@ function wasmBundles(): DuckDBBundles {
 
 async function openWasm(): Promise<{ wasm: DuckDBBindingsBase; conn: DuckDBConnection }> {
   const wasm = await createDuckDB(wasmBundles(), new ConsoleLogger(LogLevel.WARNING), NODE_RUNTIME);
+  await wasm.instantiate();
   wasm.open({});
   const conn = wasm.connect();
   return { wasm, conn };
