@@ -66,9 +66,16 @@ export default function UploadPage() {
     setUploadProgress(null);
     setUploadError(null);
     try {
-      const existingRes = await fetch('/api/blob/read');
-      if (!existingRes.ok) throw new Error(`Failed to read existing data: ${existingRes.status}`);
-      const existing = await existingRes.text();
+      const meta = await fetch('/api/blob/url').then(r => r.json()) as { url?: string | null };
+      const blobUrl = meta?.url;
+      let existing = '';
+      if (blobUrl) {
+        // Public blobs: fetch directly from CDN. Private blobs: server proxy fallback.
+        let r = await fetch(blobUrl);
+        if (!r.ok) r = await fetch('/api/blob/read');
+        if (!r.ok) throw new Error(`Failed to read existing data: ${r.status}`);
+        existing = await r.text();
+      }
       const hasExistingBytes = existing.trim().length > 0;
       // Refuse to append to data with a mismatched schema — that would produce a
       // broken CSV that DuckDB can't parse. Server also validates in the
@@ -92,7 +99,7 @@ export default function UploadPage() {
       // route. upload() fetches a short-lived token from /api/blob/upload-token
       // and streams the body straight to blob storage in multipart parts.
       await upload('accumulated.csv', accumulated, {
-        access: 'private',
+        access: 'public',
         contentType: 'text/csv',
         handleUploadUrl: '/api/blob/upload-token',
         multipart: true,
