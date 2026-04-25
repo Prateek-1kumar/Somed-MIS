@@ -1,7 +1,7 @@
 'use client';
 // src/lib/DuckDbContext.tsx
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { initDuckDb, loadCsvData, runQuery, isDataLoaded } from './duckdb';
+import { initDuckDb, loadCsvData, runQuery, isDataLoaded, createEmptyDataTable } from './duckdb';
 
 interface DuckDbContextValue {
   ready: boolean;
@@ -20,6 +20,7 @@ export function DuckDbProvider({ children, initialCsv }: { children: ReactNode; 
     initDuckDb()
       .then(async () => {
         if (initialCsv) await loadCsvData(initialCsv);
+        else await createEmptyDataTable();
         setReady(true);
       })
       .catch(e => setError(String(e)));

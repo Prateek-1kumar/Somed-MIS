@@ -90,3 +90,16 @@ export async function runQuery(sql: string): Promise<Record<string, unknown>[]> 
 }
 
 export function isDataLoaded(): boolean { return loaded; }
+
+// Creates an empty data table with the correct schema. Called when no CSV is
+// available so that dashboard queries return empty results instead of throwing
+// "Table with name data does not exist".
+export async function createEmptyDataTable(): Promise<void> {
+  if (!conn) throw new Error('DuckDB not initialised');
+  const columns = CSV_COLUMNS.map(col =>
+    CSV_COLUMN_TYPES[col] === 'DOUBLE' ? `"${col}" DOUBLE` : `"${col}" VARCHAR`
+  ).join(', ');
+  await conn.query('DROP TABLE IF EXISTS data');
+  await conn.query(`CREATE TABLE data (${columns})`);
+  loaded = true;
+}
