@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useDuckDb } from '@/lib/DuckDbContext';
+import { runRawSql } from '@/app/reports/actions';
 import AnswerCard from '@/components/chat/AnswerCard';
 import StreamingTrace from '@/components/chat/StreamingTrace';
 import { streamAgent } from '@/lib/chatClient';
@@ -48,13 +48,12 @@ function buildApiHistory(messages: ChatMessage[]): ConversationTurn[] {
   return turns.slice(-6);
 }
 
-/** Try to execute the agent's SQL in the browser DuckDB so we can show rows. */
+/** Re-run the agent's SQL on the Postgres backend so we can show rows in the AnswerCard. */
 async function fetchRowsForSql(
-  query: (sql: string) => Promise<Record<string, unknown>[]>,
-  sql: string,
+  sqlText: string,
 ): Promise<{ rows: Record<string, unknown>[] } | { error: string }> {
   try {
-    const rows = await query(sql);
+    const rows = await runRawSql(sqlText);
     return { rows };
   } catch (e) {
     return { error: String(e) };
@@ -62,7 +61,6 @@ async function fetchRowsForSql(
 }
 
 export default function ChatPage() {
-  const { query, ready } = useDuckDb();
   const [state, setState] = useState<ChatState>(() => buildInitialState());
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -152,9 +150,9 @@ export default function ChatPage() {
       setIsStreaming(false);
     }
 
-    // If we got a final answer, fetch the rows via browser DuckDB for display.
-    if (finalAnswer && ready) {
-      const result = await fetchRowsForSql(query, finalAnswer.sql);
+    // If we got a final answer, re-run its SQL on Postgres for display.
+    if (finalAnswer) {
+      const result = await fetchRowsForSql(finalAnswer.sql);
       setState(s => ({
         ...s,
         messages: s.messages.map(m =>
@@ -166,7 +164,7 @@ export default function ChatPage() {
         ),
       }));
     }
-  }, [state.messages, isStreaming, query, ready]);
+  }, [state.messages, isStreaming]);
 
   // Handle a single SSE event and update the agent message.
   const handleEvent = useCallback(
@@ -364,7 +362,6 @@ export default function ChatPage() {
           <MessageView
             key={msg.id}
             msg={msg}
-            ready={ready}
             isStreaming={isStreaming}
             correctingId={correctingId}
             correctionText={correctionText}
@@ -459,7 +456,6 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }) {
 
 interface MessageViewProps {
   msg: ChatMessage;
-  ready: boolean;
   isStreaming: boolean;
   correctingId: string | null;
   correctionText: string;
