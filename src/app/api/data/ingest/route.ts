@@ -20,6 +20,7 @@ import { del } from '@vercel/blob';
 import sql from '@/lib/db';
 import { CSV_COLUMNS, CSV_COLUMN_TYPES } from '@/lib/schema';
 import { resetServerDb } from '@/lib/server-db';
+import { refreshEntityIndex } from '@/lib/entity-index';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -91,6 +92,9 @@ export async function POST(req: NextRequest) {
       await tx.unsafe(
         `INSERT INTO data (${colList}) SELECT ${insertCols} FROM data_raw`,
       );
+
+      // Refresh entity_values from the now-current data table.
+      await refreshEntityIndex(tx);
 
       await tx.unsafe('TRUNCATE data_raw');
     });
