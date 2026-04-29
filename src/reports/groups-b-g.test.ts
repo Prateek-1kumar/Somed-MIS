@@ -7,57 +7,114 @@ import { r24DoctorVisitHierarchy, r25JointWorkDetails, r26HqMonthlyComparison, r
 import { REPORTS, getReport, REPORT_GROUPS } from '@/reports';
 
 it('r6 groups by item_code and item_name', () => {
-  expect(r6ItemWise({})).toContain('item_code');
-  expect(r6ItemWise({})).toContain('item_name');
-  expect(r6ItemWise({})).toContain('achievement_pct');
+  const { text } = r6ItemWise({});
+  expect(text).toContain('item_code');
+  expect(text).toContain('item_name');
+  expect(text).toContain('achievement_pct');
 });
-it('r9 includes month ordering', () => {
-  expect(r9ItemMonthly({ fy: '2025-2026' })).toContain('month');
-  expect(r9ItemMonthly({ fy: '2025-2026' })).toContain("fy = '2025-2026'");
+it('r7 returns parameterless query when no filters', () => {
+  const { params } = r7ItemHqPerformance({});
+  expect(params).toEqual([]);
+});
+it('r8 ignores filters and returns empty params', () => {
+  const { text, params } = r8ItemFyIncrDecr({ fy: '2025-2026' });
+  expect(text).toContain('GROUP BY item_name, fy');
+  expect(text).not.toContain('$1');
+  expect(params).toEqual([]);
+});
+it('r9 includes month ordering with parameterized fy', () => {
+  const { text, params } = r9ItemMonthly({ fy: '2025-2026' });
+  expect(text).toContain('month');
+  expect(text).toContain('fy = $1');
+  expect(params).toEqual(['2025-2026']);
 });
 it('r10 uses gri_sales not return_amt', () => {
-  expect(r10ItemReturn({})).toContain('gri_sales');
-  expect(r10ItemReturn({})).not.toContain('return_amt');
+  const { text } = r10ItemReturn({});
+  expect(text).toContain('gri_sales');
+  expect(text).not.toContain('return_amt');
 });
 it('r11 groups by seg', () => {
-  expect(r11SegmentAnalysis({})).toContain('GROUP BY seg');
+  const { text } = r11SegmentAnalysis({});
+  expect(text).toContain('GROUP BY seg');
 });
 it('r12 returns return_pct_of_primary', () => {
-  expect(r12SegmentReturns({})).toContain('return_pct_of_primary');
+  const { text } = r12SegmentReturns({});
+  expect(text).toContain('return_pct_of_primary');
 });
 it('r13 includes camp_exp and mrkt_exp', () => {
-  expect(r13HqAnalysis({})).toContain('camp_exp');
-  expect(r13HqAnalysis({})).toContain('mrkt_exp');
-  expect(r13HqAnalysis({})).toContain('exp_pct_of_sales');
+  const { text } = r13HqAnalysis({});
+  expect(text).toContain('camp_exp');
+  expect(text).toContain('mrkt_exp');
+  expect(text).toContain('exp_pct_of_sales');
 });
-it('r16 filters by hq_new', () => {
-  expect(r16HqMonthly({ hq_new: 'AGRA' })).toContain("hq_new = 'AGRA'");
-  expect(r16HqMonthly({ hq_new: 'AGRA' })).toContain('month');
+it('r15 only honors hq_new in its custom filter', () => {
+  const { text, params } = r15HqItemFyIncrDecr({ hq_new: 'AGRA', fy: '2025-2026' });
+  expect(text).toContain('hq_new = $1');
+  expect(text).not.toContain('fy = $');
+  expect(params).toEqual(['AGRA']);
 });
-it('r18 filters by hq_new with WHERE', () => {
-  const sql = r18HqFyWise({ hq_new: 'HARDA' });
-  expect(sql).toContain("hq_new = 'HARDA'");
-  expect(sql).toContain('GROUP BY fy');
+it('r16 filters by hq_new with placeholder', () => {
+  const { text, params } = r16HqMonthly({ hq_new: 'AGRA' });
+  expect(text).toContain('hq_new = $1');
+  expect(text).toContain('month');
+  expect(params).toEqual(['AGRA']);
+});
+it('r17 groups by quarter', () => {
+  const { text } = r17HqQuarterly({});
+  expect(text).toContain('GROUP BY qtr, hly');
+});
+it('r18 filters by hq_new with WHERE placeholder', () => {
+  const { text, params } = r18HqFyWise({ hq_new: 'HARDA' });
+  expect(text).toContain('hq_new = $1');
+  expect(text).toContain('GROUP BY fy');
+  expect(params).toEqual(['HARDA']);
 });
 it('r19 includes expiry buckets and days_of_stock', () => {
-  expect(r19StockItemWise({})).toContain('near_3');
-  expect(r19StockItemWise({})).toContain('days_of_stock');
+  const { text } = r19StockItemWise({});
+  expect(text).toContain('near_3');
+  expect(text).toContain('days_of_stock');
+});
+it('r20 groups by hq_new', () => {
+  const { text } = r20StockHqWise({});
+  expect(text).toContain('GROUP BY zbm, abm, hq_new');
+});
+it('r21 groups by tbm and hq_new', () => {
+  const { text } = r21PatientSummary({});
+  expect(text).toContain('GROUP BY tbm, hq_new');
 });
 it('r22 includes expense percentage', () => {
-  expect(r22HqExpenses({})).toContain('exp_pct');
-  expect(r22HqExpenses({})).toContain('mrkt_exp');
+  const { text } = r22HqExpenses({});
+  expect(text).toContain('exp_pct');
+  expect(text).toContain('mrkt_exp');
 });
 it('r23 filters HAVING dc_patient > 0', () => {
-  expect(r23Dcpp({})).toContain('HAVING');
-  expect(r23Dcpp({})).toContain('dc_patient');
+  const { text } = r23Dcpp({});
+  expect(text).toContain('HAVING');
+  expect(text).toContain('dc_patient');
 });
-it('r26 groups by fy for cross-year comparison', () => {
-  expect(r26HqMonthlyComparison({ hq_new: 'AGRA' })).toContain('fy');
-  expect(r26HqMonthlyComparison({ hq_new: 'AGRA' })).toContain("hq_new = 'AGRA'");
+it('r24 includes full hierarchy columns', () => {
+  const { text } = r24DoctorVisitHierarchy({});
+  expect(text).toContain('zbm');
+  expect(text).toContain('abm');
+  expect(text).toContain('tbm');
+  expect(text).toContain('doc_code');
 });
-it('r27 groups by item_name and fy', () => {
-  expect(r27ItemMonthlyComparison({})).toContain('item_name');
-  expect(r27ItemMonthlyComparison({})).toContain('fy');
+it('r25 orders by pap_date DESC', () => {
+  const { text } = r25JointWorkDetails({});
+  expect(text).toContain('ORDER BY pap_date DESC');
+});
+it('r26 groups by fy for cross-year comparison with hq_new placeholder', () => {
+  const { text, params } = r26HqMonthlyComparison({ hq_new: 'AGRA' });
+  expect(text).toContain('fy');
+  expect(text).toContain('hq_new = $1');
+  expect(params).toEqual(['AGRA']);
+});
+it('r27 groups by item_name and fy with seg placeholder', () => {
+  const { text, params } = r27ItemMonthlyComparison({ seg: 'NEURO' });
+  expect(text).toContain('item_name');
+  expect(text).toContain('fy');
+  expect(text).toContain('seg = $1');
+  expect(params).toEqual(['NEURO']);
 });
 it('registry has exactly 27 reports', () => {
   expect(REPORTS).toHaveLength(27);
