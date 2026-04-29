@@ -1,4 +1,4 @@
-import { Filters } from '@/lib/schema';
+import { Filters, ReportQuery } from '@/lib/schema';
 import { r1SalesAnalysis, r2PrimaryBifurcation, r3ReturningExpiry, r4StockistAnalysis, r5HqFyIncrDecr } from './group-a';
 import { r6ItemWise, r7ItemHqPerformance, r8ItemFyIncrDecr, r9ItemMonthly, r10ItemReturn } from './group-b';
 import { r11SegmentAnalysis, r12SegmentReturns } from './group-c';
@@ -15,7 +15,7 @@ export interface ReportDef {
   group: string;
   chartType: ChartType;
   defaultChartKey?: string;
-  sqlFactory: (filters: Filters) => string;
+  sqlFactory: (filters: Filters) => ReportQuery;
 }
 
 export const REPORTS: ReportDef[] = [
