@@ -133,3 +133,21 @@ export interface ReportQuery {
   text: string;
   params: unknown[];
 }
+
+/**
+ * Inline parameter values into the SQL text for display in editors / debug
+ * views. Strings are single-quoted (with internal quotes doubled), numbers
+ * and booleans pass through as literals, null/undefined become NULL. The
+ * result is a readable, executable Postgres SELECT — but we only render it
+ * for the UI; we never round-trip it back through `sql.unsafe(text, params)`.
+ */
+export function renderSqlWithParams(text: string, params: unknown[]): string {
+  return text.replace(/\$(\d+)/g, (match, idx) => {
+    const i = Number(idx) - 1;
+    if (i < 0 || i >= params.length) return match;
+    const v = params[i];
+    if (v === null || v === undefined) return 'NULL';
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    return `'${String(v).replace(/'/g, "''")}'`;
+  });
+}
