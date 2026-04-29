@@ -1,9 +1,7 @@
 'use client';
 import { useState } from 'react';
-import Papa from 'papaparse';
 import { upload } from '@vercel/blob/client';
 import UploadZone from '@/components/UploadZone';
-import { useDuckDb } from '@/lib/DuckDbContext';
 import { incrementDataVersion } from '@/lib/persistence';
 import { CSV_COLUMNS } from '@/lib/schema';
 
@@ -11,49 +9,21 @@ interface UploadRecord { yyyymm: string; rows: number; date: string; }
 
 const EXPECTED_HEADER = CSV_COLUMNS.join(',');
 
-function firstLine(text: string): string {
-  const nl = text.search(/\r?\n/);
-  return (nl === -1 ? text : text.slice(0, nl)).replace(/^﻿/, '').trim();
-}
-
-function collectYyyymm(csv: string): Set<string> {
-  const set = new Set<string>();
-  Papa.parse<Record<string, string>>(csv, {
-    header: true,
-    skipEmptyLines: true,
-    step: (result) => {
-      const yy = (result.data.yyyymm ?? '').toString().trim();
-      if (yy) set.add(yy);
-    },
-  });
-  return set;
-}
-
-// Remove rows whose yyyymm is in the set, returning a CSV with the same header.
-// Used to make uploads replace-by-period: re-uploading a month's data drops the
-// old copy rather than appending a duplicate.
-function dropRowsByYyyymm(csv: string, yyyymmSet: Set<string>): string {
-  if (yyyymmSet.size === 0) return csv;
-  const kept: Record<string, string>[] = [];
-  Papa.parse<Record<string, string>>(csv, {
-    header: true,
-    skipEmptyLines: true,
-    step: (result) => {
-      const yy = (result.data.yyyymm ?? '').toString().trim();
-      if (!yyyymmSet.has(yy)) kept.push(result.data);
-    },
-  });
-  return Papa.unparse(kept, { columns: [...CSV_COLUMNS] });
+function makeStagingPath(): string {
+  const ts = Date.now();
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `data/staging/${ts}-${rand}.csv`;
 }
 
 export default function UploadPage() {
-  const { reload } = useDuckDb();
   const [pendingCsv, setPendingCsv] = useState<string | null>(null);
   const [pendingYyyymm, setPendingYyyymm] = useState('');
   const [pendingRows, setPendingRows] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [ingesting, setIngesting] = useState(false);
   const [done, setDone] = useState(false);
+  const [doneStats, setDoneStats] = useState<{ rowsAdded: number; totalRows: number } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [history, setHistory] = useState<UploadRecord[]>(() => {
     if (typeof window === 'undefined') return [];
@@ -65,36 +35,12 @@ export default function UploadPage() {
     setUploading(true);
     setUploadProgress(null);
     setUploadError(null);
+    setDoneStats(null);
     try {
-      const meta = await fetch('/api/blob/url').then(r => r.json()) as { url?: string | null; isPublic?: boolean };
-      const blobUrl = meta?.url;
-      let existing = '';
-      if (blobUrl) {
-        // Public copy (CDN): fetch directly. Private blob: go through server proxy.
-        const r = meta.isPublic ? await fetch(blobUrl) : await fetch('/api/blob/read');
-        if (!r.ok) throw new Error(`Failed to read existing data: ${r.status}`);
-        existing = await r.text();
-      }
-      const hasExistingBytes = existing.trim().length > 0;
-      // Refuse to append to data with a mismatched schema — that would produce a
-      // broken CSV that DuckDB can't parse. Server also validates in the
-      // upload-token handler; client check surfaces the problem early.
-      if (hasExistingBytes && firstLine(existing) !== EXPECTED_HEADER) {
-        throw new Error('The stored dataset has a different schema than this upload. Contact an admin to reset the data store before uploading.');
-      }
-      // Replace-by-period: drop any rows in the existing blob whose yyyymm
-      // appears in the new upload before concatenating. Without this, uploading
-      // the same month twice doubles that period's rows; this also heals a
-      // blob that's already been doubled by prior re-uploads.
-      const newYyyymm = collectYyyymm(pendingCsv);
-      const filteredExisting = hasExistingBytes ? dropRowsByYyyymm(existing, newYyyymm) : '';
-      const hasFiltered = filteredExisting.trim().length > 0;
-      const newLines = pendingCsv.split(/\r?\n/);
-      const newDataLines = hasFiltered ? newLines.slice(1).join('\n') : pendingCsv;
-      const accumulated = hasFiltered ? `${filteredExisting.trimEnd()}\n${newDataLines}` : pendingCsv;
-
-      await upload('accumulated.csv', accumulated, {
-        access: 'private',
+      // 1. Upload CSV directly to Vercel Blob via signed token.
+      const stagingPath = makeStagingPath();
+      const blob = await upload(stagingPath, pendingCsv, {
+        access: 'public',
         contentType: 'text/csv',
         handleUploadUrl: '/api/blob/upload-token',
         multipart: true,
@@ -102,34 +48,38 @@ export default function UploadPage() {
         onUploadProgress: ({ percentage }) => setUploadProgress(percentage),
       });
 
-      // Copy the private blob to a public CDN blob so the dashboard can load
-      // it directly without going through a serverless proxy (which times out
-      // on large CSVs). Best-effort: a failed copy still leaves the data safe.
-      try {
-        await fetch('/api/blob/copy-public', { method: 'POST' });
-      } catch { /* non-fatal */ }
+      // 2. Trigger server-side ingest. Server reads the blob, two-stage COPYs
+      // into Postgres, deletes the staging blob, returns row counts.
+      setIngesting(true);
+      const res = await fetch('/api/data/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blobUrl: blob.url }),
+      });
+      const json = await res.json() as { rowsAdded?: number; totalRows?: number; error?: string };
+      if (!res.ok || json.error) {
+        throw new Error(json.error ?? `ingest failed: ${res.status}`);
+      }
 
-      // Blob is now the source of truth — data is persisted regardless of what
-      // happens next. Record the upload history and invalidate caches.
+      // 3. Invalidate cached report results so dashboard / reports re-query.
       incrementDataVersion();
-      const record: UploadRecord = { yyyymm: pendingYyyymm, rows: pendingRows, date: new Date().toLocaleDateString('en-IN') };
+
+      const record: UploadRecord = {
+        yyyymm: pendingYyyymm,
+        rows: pendingRows,
+        date: new Date().toLocaleDateString('en-IN'),
+      };
       const updated = [record, ...history].slice(0, 10);
       setHistory(updated);
       localStorage.setItem('uploadHistory', JSON.stringify(updated));
+      setDoneStats({ rowsAdded: json.rowsAdded ?? 0, totalRows: json.totalRows ?? 0 });
       setDone(true);
       setPendingCsv(null);
-
-      // Best-effort: refresh in-memory DuckDB so other pages see new data
-      // without a reload. If this fails, the upload still succeeded.
-      try {
-        await reload(accumulated);
-      } catch (reloadErr) {
-        setUploadError(`Data saved, but refreshing in-memory DuckDB failed: ${String(reloadErr)}. Reload the page to see the updated data.`);
-      }
     } catch (e) {
       setUploadError(String(e));
     } finally {
       setUploading(false);
+      setIngesting(false);
     }
   };
 
@@ -140,14 +90,14 @@ export default function UploadPage() {
           Monthly Data Upload
         </h1>
         <p style={{ fontSize: '15px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-          Upload your latest CSV data to synchronize and append new records to the database. Ensure the file schema matches the required metrics.
+          Upload your latest CSV. Re-uploading a month replaces that period&apos;s rows; new months are appended.
         </p>
       </div>
 
-      <div style={{ 
-        backgroundColor: 'var(--bg-surface)', 
-        border: '1px solid var(--border)', 
-        borderRadius: '12px', 
+      <div style={{
+        backgroundColor: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
+        borderRadius: '12px',
         padding: '24px',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)'
       }}>
@@ -156,18 +106,19 @@ export default function UploadPage() {
           setPendingYyyymm(validation.yyyymm);
           setPendingRows(validation.totalRows);
           setDone(false);
+          setDoneStats(null);
           setUploadError(null);
         }} />
 
         {pendingCsv && !done && (
-          <div style={{ 
-            marginTop: '24px', 
-            paddingTop: '24px', 
+          <div style={{
+            marginTop: '24px',
+            paddingTop: '24px',
             borderTop: '1px solid var(--border)',
-            display: 'flex', 
+            display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
-            gap: '12px' 
+            gap: '12px'
           }}>
             <button onClick={() => { setPendingCsv(null); setUploadError(null); }} style={{
               padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
@@ -179,18 +130,20 @@ export default function UploadPage() {
             >
               Cancel
             </button>
-            <button onClick={handleConfirm} disabled={uploading} style={{
+            <button onClick={handleConfirm} disabled={uploading || ingesting} style={{
               padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
               border: '1px solid var(--accent)', backgroundColor: 'var(--accent)', color: 'var(--text-inverse)',
-              opacity: uploading ? 0.7 : 1, transition: 'all 0.15s ease',
+              opacity: (uploading || ingesting) ? 0.7 : 1, transition: 'all 0.15s ease',
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
             }}
-            onMouseOver={e => { if (!uploading) e.currentTarget.style.backgroundColor = 'var(--accent-hover)' }}
+            onMouseOver={e => { if (!uploading && !ingesting) e.currentTarget.style.backgroundColor = 'var(--accent-hover)' }}
             onMouseOut={e => e.currentTarget.style.backgroundColor = 'var(--accent)'}
             >
-              {uploading
-                ? (uploadProgress !== null ? `Uploading… ${Math.round(uploadProgress)}%` : 'Preparing upload…')
-                : 'Confirm & Append'}
+              {ingesting
+                ? 'Ingesting into Postgres…'
+                : uploading
+                  ? (uploadProgress !== null ? `Uploading… ${Math.round(uploadProgress)}%` : 'Preparing upload…')
+                  : 'Confirm & Append'}
             </button>
           </div>
         )}
@@ -201,11 +154,11 @@ export default function UploadPage() {
           </div>
         )}
 
-        {done && (
+        {done && doneStats && (
           <div style={{ marginTop: '20px', padding: '16px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid var(--success)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '20px' }}>✅</span>
             <p style={{ fontSize: '14px', color: 'var(--success)', fontWeight: 600, margin: 0 }}>
-              Data appended successfully. All reports marked for refresh.
+              Ingested {doneStats.rowsAdded.toLocaleString()} new rows. Total in database: {doneStats.totalRows.toLocaleString()}.
             </p>
           </div>
         )}
@@ -217,18 +170,18 @@ export default function UploadPage() {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
             Upload History
           </h2>
-          <div style={{ 
-            backgroundColor: 'var(--bg-surface)', 
-            border: '1px solid var(--border)', 
+          <div style={{
+            backgroundColor: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             overflow: 'hidden'
           }}>
             {history.map((h, i) => (
-              <div key={i} style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
+              <div key={i} style={{
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '16px 20px', 
+                padding: '16px 20px',
                 borderBottom: i < history.length - 1 ? '1px solid var(--border)' : 'none',
                 backgroundColor: i % 2 === 0 ? 'transparent' : 'var(--bg-surface-raised)'
               }}>
@@ -236,13 +189,13 @@ export default function UploadPage() {
                   <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>{h.date}</span>
                   <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Period: {h.yyyymm}</span>
                 </div>
-                <div style={{ 
-                  padding: '4px 10px', 
-                  backgroundColor: 'var(--bg-accent)', 
-                  borderRadius: '20px', 
-                  fontSize: '12px', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)' 
+                <div style={{
+                  padding: '4px 10px',
+                  backgroundColor: 'var(--bg-accent)',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)'
                 }}>
                   {h.rows.toLocaleString()} rows
                 </div>

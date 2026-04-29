@@ -22,19 +22,30 @@ describe('validateCsvRow', () => {
 });
 
 describe('parseFilters', () => {
-  it('builds WHERE clause for fy filter', () => {
-    const result = parseFilters({ fy: '2025-2026' });
-    expect(result).toBe(`WHERE fy = '2025-2026'`);
+  it('builds parameterized WHERE for a single filter', () => {
+    const { where, params } = parseFilters({ fy: '2025-2026' });
+    expect(where).toBe('WHERE fy = $1');
+    expect(params).toEqual(['2025-2026']);
   });
 
-  it('combines multiple filters with AND', () => {
-    const result = parseFilters({ fy: '2025-2026', zbm: 'ZBM MP' });
-    expect(result).toContain(`fy = '2025-2026'`);
-    expect(result).toContain(`zbm = 'ZBM MP'`);
-    expect(result).toContain('AND');
+  it('combines multiple filters with AND and increments placeholders', () => {
+    const { where, params } = parseFilters({ fy: '2025-2026', zbm: 'ZBM MP' });
+    expect(where).toBe('WHERE fy = $1 AND zbm = $2');
+    expect(params).toEqual(['2025-2026', 'ZBM MP']);
   });
 
-  it('returns empty string when no filters', () => {
-    expect(parseFilters({})).toBe('');
+  it('returns empty where + empty params when no filters', () => {
+    const { where, params } = parseFilters({});
+    expect(where).toBe('');
+    expect(params).toEqual([]);
+  });
+
+  it('does not interpolate filter values into the SQL string', () => {
+    // Injection guard: a bobby-tables value must never appear in the SQL.
+    const evil = `'; DROP TABLE data; --`;
+    const { where, params } = parseFilters({ fy: evil });
+    expect(where).not.toContain(evil);
+    expect(where).toBe('WHERE fy = $1');
+    expect(params).toEqual([evil]);
   });
 });

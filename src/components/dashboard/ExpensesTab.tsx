@@ -1,15 +1,13 @@
 // src/components/dashboard/ExpensesTab.tsx
 'use client';
 import { useEffect, useState } from 'react';
-import { useDuckDb } from '@/lib/DuckDbContext';
+import { runDashboardQuery } from '@/app/reports/actions';
 import { Filters } from '@/lib/schema';
-import { dashExpenses } from '@/reports/dashboard';
 import { fmtL, fmtPct, fmtCount } from './shared';
 
 interface Props { filters: Filters }
 
 export default function ExpensesTab({ filters }: Props) {
-  const { query } = useDuckDb();
   const [data, setData] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,11 +15,11 @@ export default function ExpensesTab({ filters }: Props) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    query(dashExpenses(filters))
+    runDashboardQuery('expenses', filters)
       .then(rows => setData((rows[0] as Record<string, number>) ?? {}))
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [filters, query]);
+  }, [filters]);
 
   const n = (k: string) => Number(data[k] ?? 0);
 

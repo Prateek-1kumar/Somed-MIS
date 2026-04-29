@@ -4,7 +4,7 @@
 import { runAgent } from './loop';
 import type { ModelAdapter, ModelRoundTrip, AgentEvent, ToolCall } from './types';
 import { createStore, createInMemoryProvider } from '../golden-examples';
-import type { ServerDb, QueryResult } from '../server-duckdb';
+import type { ServerDb, QueryResult } from '../server-db';
 
 function fakeDb(sqlHandler: (sql: string) => QueryResult): ServerDb {
   return {

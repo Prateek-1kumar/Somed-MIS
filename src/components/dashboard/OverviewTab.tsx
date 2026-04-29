@@ -1,9 +1,8 @@
 // src/components/dashboard/OverviewTab.tsx
 'use client';
 import { useEffect, useState } from 'react';
-import { useDuckDb } from '@/lib/DuckDbContext';
+import { runDashboardQuery } from '@/app/reports/actions';
 import { Filters } from '@/lib/schema';
-import { dashOverviewKpis, dashOverviewFy } from '@/reports/dashboard';
 import KpiCard from '@/components/KpiCard';
 import ReportChart from '@/components/ReportChart';
 import ReportTable from '@/components/ReportTable';
@@ -12,7 +11,6 @@ import { fmtL, fmtPct, fmtQty } from './shared';
 interface Props { filters: Filters }
 
 export default function OverviewTab({ filters }: Props) {
-  const { query } = useDuckDb();
   const [kpis, setKpis] = useState<Record<string, number>>({});
   const [fyRows, setFyRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,14 +19,17 @@ export default function OverviewTab({ filters }: Props) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([query(dashOverviewKpis(filters)), query(dashOverviewFy(filters))])
+    Promise.all([
+      runDashboardQuery('overviewKpis', filters),
+      runDashboardQuery('overviewFy', filters),
+    ])
       .then(([kpiRes, fyRes]) => {
         setKpis((kpiRes[0] as Record<string, number>) ?? {});
         setFyRows(fyRes);
       })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [filters, query]);
+  }, [filters]);
 
   const n = (k: string) => Number(kpis[k] ?? 0);
 

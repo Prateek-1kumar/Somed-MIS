@@ -4,7 +4,7 @@
 // mark the end of the turn — the agent MUST call exactly one of them to end
 // a round.
 
-import type { ServerDb } from '../server-duckdb';
+import type { ServerDb } from '../server-db';
 import type { GoldenExamplesStore } from '../golden-examples';
 import type {
   ToolDefinition,

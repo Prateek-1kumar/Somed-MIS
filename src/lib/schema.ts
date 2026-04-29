@@ -75,17 +75,79 @@ export function validateCsvRow(row: Record<string, string>): ValidationResult {
   };
 }
 
-export function parseFilters(filters: Filters): string {
+export interface ParsedFilters {
+  /** Either "WHERE col = $1 AND col2 = $2" or empty string. Always safe to interpolate. */
+  where: string;
+  /** Param values matching the $1, $2... placeholders in `where`, in order. */
+  params: unknown[];
+}
+
+/**
+ * Build a parameterized WHERE clause from arbitrary column/value pairs.
+ * Empty/null/undefined values are skipped. The returned `where` uses Postgres
+ * positional placeholders ($1, $2, ...) starting at $1.
+ *
+ * Use this for custom filtering inside reports that don't take the full
+ * Filters shape (e.g. r5 only honors zbm + abm).
+ */
+export function buildWhere(pairs: Array<[col: string, value: unknown]>): ParsedFilters {
   const conditions: string[] = [];
-  if (filters.fy) conditions.push(`fy = '${filters.fy}'`);
-  if (filters.zbm) conditions.push(`zbm = '${filters.zbm}'`);
-  if (filters.abm) conditions.push(`abm = '${filters.abm}'`);
-  if (filters.tbm) conditions.push(`tbm = '${filters.tbm}'`);
-  if (filters.hq_new) conditions.push(`hq_new = '${filters.hq_new}'`);
-  if (filters.seg) conditions.push(`seg = '${filters.seg}'`);
-  if (filters.qtr) conditions.push(`qtr = '${filters.qtr}'`);
-  if (filters.hly) conditions.push(`hly = '${filters.hly}'`);
-  if (filters.yyyymm) conditions.push(`yyyymm = ${filters.yyyymm}`);
-  if (filters.month) conditions.push(`month = '${filters.month}'`);
-  return conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const params: unknown[] = [];
+  for (const [col, value] of pairs) {
+    if (value === undefined || value === null || value === '') continue;
+    params.push(value);
+    conditions.push(`${col} = $${params.length}`);
+  }
+  return {
+    where: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '',
+    params,
+  };
+}
+
+/**
+ * Build a parameterized WHERE clause from a Filters object.
+ *
+ * `yyyymm` is treated as text in Postgres (preserves leading zeros), so all
+ * filter values are passed as their JS values without per-column casting.
+ */
+export function parseFilters(filters: Filters): ParsedFilters {
+  return buildWhere([
+    ['fy',      filters.fy],
+    ['zbm',     filters.zbm],
+    ['abm',     filters.abm],
+    ['tbm',     filters.tbm],
+    ['hq_new',  filters.hq_new],
+    ['seg',     filters.seg],
+    ['qtr',     filters.qtr],
+    ['hly',     filters.hly],
+    ['yyyymm',  filters.yyyymm],
+    ['month',   filters.month],
+  ]);
+}
+
+/**
+ * Result of a ReportDef sqlFactory: a parameterized SQL query ready to feed
+ * into `sql.unsafe(text, params)` or any pg driver that accepts positional params.
+ */
+export interface ReportQuery {
+  text: string;
+  params: unknown[];
+}
+
+/**
+ * Inline parameter values into the SQL text for display in editors / debug
+ * views. Strings are single-quoted (with internal quotes doubled), numbers
+ * and booleans pass through as literals, null/undefined become NULL. The
+ * result is a readable, executable Postgres SELECT — but we only render it
+ * for the UI; we never round-trip it back through `sql.unsafe(text, params)`.
+ */
+export function renderSqlWithParams(text: string, params: unknown[]): string {
+  return text.replace(/\$(\d+)/g, (match, idx) => {
+    const i = Number(idx) - 1;
+    if (i < 0 || i >= params.length) return match;
+    const v = params[i];
+    if (v === null || v === undefined) return 'NULL';
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    return `'${String(v).replace(/'/g, "''")}'`;
+  });
 }

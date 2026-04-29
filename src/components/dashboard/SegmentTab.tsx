@@ -1,9 +1,8 @@
 // src/components/dashboard/SegmentTab.tsx
 'use client';
 import { useEffect, useState } from 'react';
-import { useDuckDb } from '@/lib/DuckDbContext';
+import { runDashboardQuery } from '@/app/reports/actions';
 import { Filters } from '@/lib/schema';
-import { dashSegment } from '@/reports/dashboard';
 import ReportChart from '@/components/ReportChart';
 import ReportTable from '@/components/ReportTable';
 
@@ -23,7 +22,6 @@ const QTY_KEYS: Record<Metric, string> = {
 };
 
 export default function SegmentTab({ filters }: Props) {
-  const { query } = useDuckDb();
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,11 +31,11 @@ export default function SegmentTab({ filters }: Props) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    query(dashSegment(filters))
+    runDashboardQuery('segment', filters)
       .then(setRows)
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [filters, query]);
+  }, [filters]);
 
   const activeKey = mode === 'value' ? VALUE_KEYS[metric] : QTY_KEYS[metric];
   const btnBase = 'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors border';

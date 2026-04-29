@@ -7,7 +7,7 @@
 //   2. Pure logic: tag extraction, ranking, record construction.
 
 import { list, put } from '@vercel/blob';
-import type { DataDictionary } from './server-duckdb';
+import type { DataDictionary } from './server-db';
 
 const BLOB_PATH = 'golden_examples.json';
 const EXPIRY_MONTHS = 18;

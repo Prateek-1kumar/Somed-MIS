@@ -12,7 +12,7 @@ import {
   createInMemoryProvider,
   type GoldenExample,
 } from './golden-examples';
-import type { DataDictionary } from './server-duckdb';
+import type { DataDictionary } from './server-db';
 
 const TEST_DICT: DataDictionary = {
   generated_at: '2026-04-24T00:00:00Z',

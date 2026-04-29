@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const { getServerDb } = await import('@/lib/server-duckdb');
+        const { getServerDb } = await import('@/lib/server-db');
         const db = await getServerDb();
         const goldenStore = createStore(vercelBlobGoldenProvider);
         const createModel = createModelFactory({

@@ -1,9 +1,8 @@
 // src/components/dashboard/BrandTab.tsx
 'use client';
 import { useEffect, useState } from 'react';
-import { useDuckDb } from '@/lib/DuckDbContext';
+import { runDashboardQuery } from '@/app/reports/actions';
 import { Filters } from '@/lib/schema';
-import { dashBrand } from '@/reports/dashboard';
 import ReportChart from '@/components/ReportChart';
 import ReportTable from '@/components/ReportTable';
 
@@ -25,7 +24,6 @@ const QTY_KEYS: Record<Metric, string> = {
 };
 
 export default function BrandTab({ filters }: Props) {
-  const { query } = useDuckDb();
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,11 +33,11 @@ export default function BrandTab({ filters }: Props) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    query(dashBrand(filters))
+    runDashboardQuery('brand', filters)
       .then(setRows)
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [filters, query]);
+  }, [filters]);
 
   const activeKey = mode === 'value' ? VALUE_KEYS[metric] : QTY_KEYS[metric];
   const top15 = [...rows].sort((a, b) => Number(b[activeKey] ?? 0) - Number(a[activeKey] ?? 0)).slice(0, 15);
