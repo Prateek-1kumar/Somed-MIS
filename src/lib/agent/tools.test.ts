@@ -216,7 +216,7 @@ describe('executeTool — retrieve', () => {
   it('corpus=golden dispatches to retrieveGoldenExamples only', async () => {
     mockRetrieveGoldenExamples.mockResolvedValue([{
       id: 'g1', question: 'top brands', narrative: '', sql: 'SELECT 1',
-      chart_type: 'hbar', status: 'verified', correction_note: null, use_count: 0, rrf: 0.05,
+      chart_type: 'hbar', status: 'verified', correction_note: null, use_count: 0, verified_at: '2026-04-01', rrf: 0.05,
     }]);
     const ctx = makeCtx(() => ({ rows: [], columns: [], rowCount: 0 }));
     const result = await executeTool(
@@ -250,7 +250,7 @@ describe('executeTool — retrieve', () => {
       embedding: new Array(1536).fill(0),
       golden: [{
         id: 'g1', question: 'q', narrative: '', sql: 'SELECT 3', chart_type: 'kpi',
-        status: 'verified', correction_note: null, use_count: 0, rrf: 0.03,
+        status: 'verified', correction_note: null, use_count: 0, verified_at: '2026-04-01', rrf: 0.03,
       }],
       anchors: [{
         report_id: 'r2', name: 'X', group_name: 'Sales',
