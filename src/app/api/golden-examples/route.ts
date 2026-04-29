@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     // text-only tag extraction.
     let dictionary;
     try {
-      const { getServerDb } = await import('@/lib/server-duckdb');
+      const { getServerDb } = await import('@/lib/server-db');
       const db = await getServerDb();
       dictionary = db.dictionary;
     } catch {

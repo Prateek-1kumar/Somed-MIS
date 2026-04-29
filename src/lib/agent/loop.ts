@@ -22,7 +22,7 @@ import type {
   ToolCall,
   ToolResultForModel,
 } from './types';
-import type { ServerDb } from '../server-duckdb';
+import type { ServerDb } from '../server-db';
 import type { GoldenExamplesStore } from '../golden-examples';
 import { extractTags } from '../golden-examples';
 import { buildSystemPrompt } from './prompt';

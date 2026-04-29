@@ -4,7 +4,7 @@
 // Safe to call repeatedly; internally idempotent.
 
 import { NextResponse } from 'next/server';
-import { getServerDb } from '@/lib/server-duckdb';
+import { getServerDb } from '@/lib/server-db';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;

@@ -2,7 +2,7 @@
 // + data-dictionary summary + retrieved golden examples + behavioral rules +
 // the structured-output contract into one prompt string.
 
-import type { DataDictionary } from '../server-duckdb';
+import type { DataDictionary } from '../server-db';
 import type { GoldenExample } from '../golden-examples';
 import { CSV_COLUMNS } from '../schema';
 
