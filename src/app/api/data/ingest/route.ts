@@ -77,6 +77,17 @@ export async function POST(req: NextRequest) {
         writable as unknown as NodeJS.WritableStream,
       );
 
+      // Replace-by-period semantic preserved from the legacy uploader: drop
+      // every existing row whose yyyymm appears in this upload, so re-uploading
+      // a month overwrites instead of duplicating.
+      await tx.unsafe(`
+        DELETE FROM data
+        WHERE yyyymm IN (
+          SELECT DISTINCT yyyymm FROM data_raw
+          WHERE yyyymm IS NOT NULL AND TRIM(yyyymm) <> ''
+        )
+      `);
+
       await tx.unsafe(
         `INSERT INTO data (${colList}) SELECT ${insertCols} FROM data_raw`,
       );
