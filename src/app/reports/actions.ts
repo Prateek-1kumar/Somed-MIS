@@ -56,3 +56,17 @@ export async function runDashboardQuery(
   if (!fn) throw new Error(`unknown dashboard query: ${key}`);
   return execute(fn(filters));
 }
+
+/**
+ * Run an arbitrary SELECT (no params). Used by the SqlEditor on the report
+ * page, the override flow, and Refine-with-AI — anything where the user
+ * supplies raw SQL text. Validated as SELECT-only and LIMIT-wrapped before
+ * execution; same gate the chat agent's `runSafe` uses.
+ */
+export async function runRawSql(rawSql: string): Promise<Row[]> {
+  const gate = validateSelectSql(rawSql);
+  if (!gate.ok) throw new Error(gate.reason);
+  const capped = wrapWithLimit(rawSql);
+  const rows = await sql.unsafe(capped);
+  return Array.from(rows) as Row[];
+}
