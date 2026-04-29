@@ -43,6 +43,7 @@ export interface GoldenRow {
   status: 'verified' | 'corrected';
   correction_note: string | null;
   use_count: number;
+  verified_at: string;
   rrf: number;
 }
 
@@ -73,7 +74,7 @@ export async function retrieveGoldenExamples(
       GROUP BY id
     )
     SELECT g.id, g.question, g.narrative, g.sql, g.chart_type, g.status,
-           g.correction_note, g.use_count, f.rrf
+           g.correction_note, g.use_count, g.verified_at::text AS verified_at, f.rrf
     FROM fused f JOIN golden_examples g USING (id)
     ORDER BY (f.rrf * CASE WHEN g.status='corrected' THEN 1.25 ELSE 1.0 END) DESC
     LIMIT $3

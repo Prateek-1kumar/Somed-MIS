@@ -23,8 +23,7 @@ import type {
   ToolResultForModel,
 } from './types';
 import type { ServerDb } from '../server-db';
-import type { GoldenExamplesStore } from '../golden-examples';
-import { extractTags } from '../golden-examples';
+import { retrieveAll } from '../retrieval';
 import { buildSystemPrompt } from './prompt';
 import {
   TOOL_DEFINITIONS,
@@ -43,7 +42,6 @@ export interface RunAgentInput {
 
 export interface RunAgentDeps {
   db: ServerDb;
-  goldenStore: GoldenExamplesStore;
   createModel(): ModelAdapter;
 }
 
@@ -53,11 +51,14 @@ export async function* runAgent(
 ): AsyncGenerator<AgentEvent> {
   try {
     const { userMessage, history } = input;
-    const tags = extractTags(userMessage, deps.db.dictionary);
-    const goldenExamples = await deps.goldenStore.topK(tags, 5);
+    const { golden: goldenExamples, anchors } = await retrieveAll(userMessage, {
+      goldenK: 5,
+      anchorsK: 3,
+    });
     const systemPrompt = buildSystemPrompt({
       dictionary: deps.db.dictionary,
       goldenExamples,
+      anchors,
       history,
     });
     const model = deps.createModel();
@@ -137,7 +138,6 @@ export async function* runAgent(
         yield { type: 'tool_call', id: call.id, tool: call.name, args: call.args };
         const result = await executeTool(call as ToolCall, {
           db: deps.db,
-          goldenStore: deps.goldenStore,
         });
         yield { type: 'tool_result', id: call.id, result };
         results.push({ id: call.id, name: call.name, result });

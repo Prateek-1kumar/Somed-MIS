@@ -1,9 +1,23 @@
 /**
  * @jest-environment node
  */
+
+// Mock retrieval (loop calls retrieveAll on every turn) and the embedding +
+// retrieveEntities surfaces (search_values tool tier 1). Default returns are
+// empty/no-op so loop tests stay deterministic.
+jest.mock('../retrieval', () => ({
+  retrieveAll: jest.fn(async () => ({
+    embedding: new Array(1536).fill(0),
+    golden: [],
+    anchors: [],
+  })),
+  retrieveGoldenExamples: jest.fn(async () => []),
+  retrieveReportAnchors:  jest.fn(async () => []),
+  retrieveEntities:       jest.fn(async () => []),
+}));
+
 import { runAgent } from './loop';
 import type { ModelAdapter, ModelRoundTrip, AgentEvent, ToolCall } from './types';
-import { createStore, createInMemoryProvider } from '../golden-examples';
 import type { ServerDb, QueryResult } from '../server-db';
 
 function fakeDb(sqlHandler: (sql: string) => QueryResult): ServerDb {
@@ -50,7 +64,6 @@ async function collectEvents(gen: AsyncGenerator<AgentEvent>): Promise<AgentEven
 describe('runAgent', () => {
   it('finalizes on a direct respond_with_answer call', async () => {
     const db = fakeDb(() => ({ rows: [{ n: 10 }], columns: ['n'], rowCount: 1 }));
-    const goldenStore = createStore(createInMemoryProvider());
     const answerCall: ToolCall = {
       id: 'c1',
       name: 'respond_with_answer',
@@ -68,7 +81,7 @@ describe('runAgent', () => {
     const events = await collectEvents(
       runAgent(
         { userMessage: 'How many rows are there?', history: [] },
-        { db, goldenStore, createModel: () => model },
+        { db, createModel: () => model },
       ),
     );
 
@@ -85,7 +98,6 @@ describe('runAgent', () => {
       rows: [{ value: 'SHOVERT-8 TAB 10S' }, { value: 'SHOVERT-16 TAB 10S' }],
       columns: ['value'], rowCount: 2,
     }));
-    const goldenStore = createStore(createInMemoryProvider());
 
     const model = scriptedModel([
       {
@@ -114,7 +126,7 @@ describe('runAgent', () => {
     const events = await collectEvents(
       runAgent(
         { userMessage: 'List Shovert variants', history: [] },
-        { db, goldenStore, createModel: () => model },
+        { db, createModel: () => model },
       ),
     );
 
@@ -128,7 +140,6 @@ describe('runAgent', () => {
 
   it('emits clarify event on respond_with_clarification', async () => {
     const db = fakeDb(() => ({ rows: [], columns: [], rowCount: 0 }));
-    const goldenStore = createStore(createInMemoryProvider());
     const model = scriptedModel([
       {
         kind: 'tool_calls',
@@ -143,7 +154,7 @@ describe('runAgent', () => {
     const events = await collectEvents(
       runAgent(
         { userMessage: 'show me sales', history: [] },
-        { db, goldenStore, createModel: () => model },
+        { db, createModel: () => model },
       ),
     );
 
@@ -157,7 +168,6 @@ describe('runAgent', () => {
 
   it('retries when respond_with_answer has invalid args', async () => {
     const db = fakeDb(() => ({ rows: [], columns: [], rowCount: 0 }));
-    const goldenStore = createStore(createInMemoryProvider());
 
     const model = scriptedModel([
       {
@@ -181,7 +191,7 @@ describe('runAgent', () => {
     const events = await collectEvents(
       runAgent(
         { userMessage: 'q', history: [] },
-        { db, goldenStore, createModel: () => model },
+        { db, createModel: () => model },
       ),
     );
 
@@ -194,13 +204,12 @@ describe('runAgent', () => {
 
   it('surfaces an error when model returns plain text', async () => {
     const db = fakeDb(() => ({ rows: [], columns: [], rowCount: 0 }));
-    const goldenStore = createStore(createInMemoryProvider());
     const model = scriptedModel([{ kind: 'text', text: 'I refuse' }]);
 
     const events = await collectEvents(
       runAgent(
         { userMessage: 'q', history: [] },
-        { db, goldenStore, createModel: () => model },
+        { db, createModel: () => model },
       ),
     );
 
@@ -210,7 +219,6 @@ describe('runAgent', () => {
 
   it('surfaces an error after hitting iteration cap', async () => {
     const db = fakeDb(() => ({ rows: [{ n: 1 }], columns: ['n'], rowCount: 1 }));
-    const goldenStore = createStore(createInMemoryProvider());
 
     // 10 rounds of search_values — more than the 8-iteration cap.
     const script: ModelRoundTrip[] = Array.from({ length: 10 }, (_, i) => ({
@@ -222,7 +230,7 @@ describe('runAgent', () => {
     const events = await collectEvents(
       runAgent(
         { userMessage: 'loop forever', history: [] },
-        { db, goldenStore, createModel: () => model },
+        { db, createModel: () => model },
       ),
     );
 

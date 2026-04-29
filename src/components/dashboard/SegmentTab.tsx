@@ -18,7 +18,7 @@ const VALUE_KEYS: Record<Metric, string> = {
   primary: 'primary_value', secondary: 'secondary_value', foc: 'foc_value', net_secondary: 'net_secondary_value',
 };
 const QTY_KEYS: Record<Metric, string> = {
-  primary: 'primary_qty', secondary: 'secondary_qty', foc: 'foc_qty', net_secondary: 'primary_qty',
+  primary: 'primary_qty', secondary: 'secondary_qty', foc: 'foc_qty', net_secondary: 'secondary_qty',
 };
 
 export default function SegmentTab({ filters }: Props) {

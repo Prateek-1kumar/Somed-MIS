@@ -50,7 +50,15 @@ export default function ReportChart({ rows, chartType, xKey, valueKeys }: Props)
   if (!rows.length || chartType === 'table-only') return null;
   const cols = Object.keys(rows[0]);
   const xk = xKey ?? cols[0];
-  const vks = valueKeys ?? cols.filter(c => c !== xk && typeof rows[0][c] === 'number').slice(0, 4);
+  const vks = valueKeys ?? cols.filter(c => c !== xk && !isNaN(Number(rows[0][c]))).slice(0, 4);
+
+  const chartData = rows.map(r => {
+    const rowObj: any = { ...r };
+    vks.forEach(k => {
+      rowObj[k] = Number(r[k]) || 0;
+    });
+    return rowObj;
+  });
 
   // Standard elegant axis parameters
   const axisProps = {
@@ -65,7 +73,7 @@ export default function ReportChart({ rows, chartType, xKey, valueKeys }: Props)
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie 
-              data={rows} 
+              data={chartData} 
               dataKey={vks[0]} 
               nameKey={xk} 
               cx="50%" 
@@ -75,7 +83,7 @@ export default function ReportChart({ rows, chartType, xKey, valueKeys }: Props)
               paddingAngle={2}
               labelLine={false}
             >
-              {rows.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} className="stroke-[var(--bg-surface)] stroke-2" />)}
+              {chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} className="stroke-[var(--bg-surface)] stroke-2" />)}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
             <Legend 
@@ -92,7 +100,7 @@ export default function ReportChart({ rows, chartType, xKey, valueKeys }: Props)
     return (
       <div className="w-full h-[350px] pt-4">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={rows} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+          <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
             <XAxis dataKey={xk} {...axisProps} dy={10} minTickGap={30} />
             <YAxis {...axisProps} dx={-10} tickFormatter={formatValue} />
@@ -119,7 +127,7 @@ export default function ReportChart({ rows, chartType, xKey, valueKeys }: Props)
   return (
     <div className="w-full h-[350px] pt-4">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={rows} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
           <XAxis dataKey={xk} {...axisProps} dy={10} minTickGap={30} />
           <YAxis {...axisProps} dx={-10} tickFormatter={formatValue} />
