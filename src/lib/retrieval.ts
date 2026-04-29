@@ -98,7 +98,7 @@ export async function retrieveGoldenExamples(
       FROM fused f JOIN golden_examples g USING (id)
       ORDER BY (f.rrf * CASE WHEN g.status='corrected' THEN 1.25 ELSE 1.0 END) DESC
       LIMIT $3
-    `, [vec, question, k]) as unknown as Promise<GoldenRow[]>,
+    `, [vec, question, k]),
     RETRIEVAL_TIMEOUT_MS,
     'retrieveGoldenExamples',
   );
@@ -123,30 +123,34 @@ export async function retrieveReportAnchors(
   const k = opts.k ?? 3;
   const embedding = opts.embedding ?? await embedQuery(question);
   const vec = toVectorLiteral(embedding);
-  const rows = await sql.unsafe<AnchorRow[]>(`
-    WITH dense AS (
-      SELECT report_id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rnk
-      FROM report_anchors
-      WHERE embedding IS NOT NULL
-      ORDER BY embedding <=> $1::vector
-      LIMIT ${STAGE_LIMIT}
-    ),
-    sparse AS (
-      SELECT report_id, ROW_NUMBER() OVER (ORDER BY ts_rank_cd(fts, q) DESC) AS rnk
-      FROM report_anchors, plainto_tsquery('english', $2) AS q
-      WHERE fts @@ q
-      LIMIT ${STAGE_LIMIT}
-    ),
-    fused AS (
-      SELECT report_id, SUM(1.0 / (${RRF_K} + rnk))::float8 AS rrf
-      FROM (SELECT report_id, rnk FROM dense UNION ALL SELECT report_id, rnk FROM sparse) r
-      GROUP BY report_id
-    )
-    SELECT a.report_id, a.name, a.group_name, a.anchor_question, a.source_sql, f.rrf
-    FROM fused f JOIN report_anchors a USING (report_id)
-    ORDER BY f.rrf DESC
-    LIMIT $3
-  `, [vec, question, k]);
+  const rows = await withTimeout(
+    sql.unsafe<AnchorRow[]>(`
+      WITH dense AS (
+        SELECT report_id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rnk
+        FROM report_anchors
+        WHERE embedding IS NOT NULL
+        ORDER BY embedding <=> $1::vector
+        LIMIT ${STAGE_LIMIT}
+      ),
+      sparse AS (
+        SELECT report_id, ROW_NUMBER() OVER (ORDER BY ts_rank_cd(fts, q) DESC) AS rnk
+        FROM report_anchors, plainto_tsquery('english', $2) AS q
+        WHERE fts @@ q
+        LIMIT ${STAGE_LIMIT}
+      ),
+      fused AS (
+        SELECT report_id, SUM(1.0 / (${RRF_K} + rnk))::float8 AS rrf
+        FROM (SELECT report_id, rnk FROM dense UNION ALL SELECT report_id, rnk FROM sparse) r
+        GROUP BY report_id
+      )
+      SELECT a.report_id, a.name, a.group_name, a.anchor_question, a.source_sql, f.rrf
+      FROM fused f JOIN report_anchors a USING (report_id)
+      ORDER BY f.rrf DESC
+      LIMIT $3
+    `, [vec, question, k]),
+    RETRIEVAL_TIMEOUT_MS,
+    'retrieveReportAnchors',
+  );
   return rows;
 }
 
@@ -157,13 +161,17 @@ export interface EntityMatch { value: string; sim: number; display_count: number
 export async function retrieveEntities(
   kind: EntityKind, query: string, limit: number = 20,
 ): Promise<EntityMatch[]> {
-  const rows = await sql.unsafe<EntityMatch[]>(`
-    SELECT value, similarity(value, $1)::float8 AS sim, display_count
-    FROM entity_values
-    WHERE kind = $2 AND value % $1
-    ORDER BY similarity(value, $1) DESC, display_count DESC
-    LIMIT $3
-  `, [query, kind, limit]);
+  const rows = await withTimeout(
+    sql.unsafe<EntityMatch[]>(`
+      SELECT value, similarity(value, $1)::float8 AS sim, display_count
+      FROM entity_values
+      WHERE kind = $2 AND value % $1
+      ORDER BY similarity(value, $1) DESC, display_count DESC
+      LIMIT $3
+    `, [query, kind, limit]),
+    RETRIEVAL_TIMEOUT_MS,
+    'retrieveEntities',
+  );
   return rows;
 }
 
