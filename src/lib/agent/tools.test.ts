@@ -8,7 +8,7 @@ import {
   type ToolContext,
 } from './tools';
 import { createStore, createInMemoryProvider } from '../golden-examples';
-import type { ServerDb, DataDictionary, QueryResult } from '../server-duckdb';
+import type { ServerDb, DataDictionary, QueryResult } from '../server-db';
 
 function fakeDictionary(): DataDictionary {
   return {

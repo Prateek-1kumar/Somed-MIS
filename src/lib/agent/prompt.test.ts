@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 import { buildSystemPrompt } from './prompt';
-import type { DataDictionary } from '../server-duckdb';
+import type { DataDictionary } from '../server-db';
 import type { GoldenExample } from '../golden-examples';
 
 const DICT: DataDictionary = {
