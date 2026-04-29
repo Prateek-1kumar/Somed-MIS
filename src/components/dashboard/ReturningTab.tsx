@@ -1,9 +1,8 @@
 // src/components/dashboard/ReturningTab.tsx
 'use client';
 import { useEffect, useState } from 'react';
-import { useDuckDb } from '@/lib/DuckDbContext';
+import { runDashboardQuery } from '@/app/reports/actions';
 import { Filters } from '@/lib/schema';
-import { dashReturning } from '@/reports/dashboard';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import KpiCard from '@/components/KpiCard';
 import { fmtL, fmtLakhs } from './shared';
@@ -13,7 +12,6 @@ interface Props { filters: Filters }
 const SLICE_COLORS = ['#f43f5e', '#f59e0b', '#8b5cf6', '#0ea5e9', '#10b981'];
 
 export default function ReturningTab({ filters }: Props) {
-  const { query } = useDuckDb();
   const [data, setData] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,11 +19,11 @@ export default function ReturningTab({ filters }: Props) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    query(dashReturning(filters))
+    runDashboardQuery('returning', filters)
       .then(rows => setData((rows[0] as Record<string, number>) ?? {}))
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [filters, query]);
+  }, [filters]);
 
   const n = (k: string) => Number(data[k] ?? 0);
   const abs = (k: string) => Math.abs(n(k));

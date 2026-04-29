@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { useDuckDb } from '@/lib/DuckDbContext';
+import { runRawSql } from '@/app/reports/actions';
 import { ChartType } from '@/reports';
 import ReportTable from '@/components/ReportTable';
 import ReportChart from '@/components/ReportChart';
@@ -16,7 +16,6 @@ interface SavedQuery {
 }
 
 export default function MyReportsPage() {
-  const { query } = useDuckDb();
   const [queries, setQueries] = useState<SavedQuery[]>([]);
   const [active, setActive] = useState<SavedQuery | null>(null);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
@@ -50,7 +49,7 @@ export default function MyReportsPage() {
     setActive(q);
     setRunError(null);
     try {
-      const result = await query(q.sql);
+      const result = await runRawSql(q.sql);
       setRows(result);
     } catch (e) {
       setRunError(String(e));
@@ -170,9 +169,9 @@ export default function MyReportsPage() {
           )}
           <SqlEditor
             sql={active.sql}
-            onRun={async (sql) => {
+            onRun={async (sqlText) => {
               setRunError(null);
-              try { setRows(await query(sql)); } catch (e) { setRunError(String(e)); }
+              try { setRows(await runRawSql(sqlText)); } catch (e) { setRunError(String(e)); }
             }}
           />
         </div>

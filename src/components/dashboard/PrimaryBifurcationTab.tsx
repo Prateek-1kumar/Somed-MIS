@@ -1,9 +1,8 @@
 // src/components/dashboard/PrimaryBifurcationTab.tsx
 'use client';
 import { useEffect, useState } from 'react';
-import { useDuckDb } from '@/lib/DuckDbContext';
+import { runDashboardQuery } from '@/app/reports/actions';
 import { Filters } from '@/lib/schema';
-import { dashPrimaryBifurcation, dashPrimaryBifurcationFy } from '@/reports/dashboard';
 import KpiCard from '@/components/KpiCard';
 import ReportChart from '@/components/ReportChart';
 import ReportTable from '@/components/ReportTable';
@@ -12,7 +11,6 @@ import { fmtL } from './shared';
 interface Props { filters: Filters }
 
 export default function PrimaryBifurcationTab({ filters }: Props) {
-  const { query } = useDuckDb();
   const [kpis, setKpis] = useState<Record<string, number>>({});
   const [fyRows, setFyRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,14 +19,17 @@ export default function PrimaryBifurcationTab({ filters }: Props) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([query(dashPrimaryBifurcation(filters)), query(dashPrimaryBifurcationFy(filters))])
+    Promise.all([
+      runDashboardQuery('primaryBifurcation', filters),
+      runDashboardQuery('primaryBifurcationFy', filters),
+    ])
       .then(([kpiRes, fyRes]) => {
         setKpis((kpiRes[0] as Record<string, number>) ?? {});
         setFyRows(fyRes);
       })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [filters, query]);
+  }, [filters]);
 
   const n = (k: string) => Number(kpis[k] ?? 0);
 
