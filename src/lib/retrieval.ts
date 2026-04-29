@@ -17,6 +17,25 @@ export const embedText  = _embedText;
 
 const RRF_K = 60;
 const STAGE_LIMIT = 30;
+const RETRIEVAL_TIMEOUT_MS = 10_000;
+
+/**
+ * Race a SQL promise against a timer so a hung Postgres connection (e.g.
+ * stale TCP socket after a dev-server laptop sleep) fails fast instead of
+ * blocking the agent loop forever.
+ */
+function withTimeout<T>(p: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+  });
+  return Promise.race([p, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 // ── Pure RRF (mirrors the SQL CTE; used by tests + sanity checks) ────
 
@@ -54,31 +73,35 @@ export async function retrieveGoldenExamples(
   const k = opts.k ?? 5;
   const embedding = opts.embedding ?? await embedQuery(question);
   const vec = toVectorLiteral(embedding);
-  const rows = await sql.unsafe<GoldenRow[]>(`
-    WITH dense AS (
-      SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rnk
-      FROM golden_examples
-      WHERE embedding IS NOT NULL
-      ORDER BY embedding <=> $1::vector
-      LIMIT ${STAGE_LIMIT}
-    ),
-    sparse AS (
-      SELECT id, ROW_NUMBER() OVER (ORDER BY ts_rank_cd(fts, q) DESC) AS rnk
-      FROM golden_examples, plainto_tsquery('english', $2) AS q
-      WHERE fts @@ q
-      LIMIT ${STAGE_LIMIT}
-    ),
-    fused AS (
-      SELECT id, SUM(1.0 / (${RRF_K} + rnk))::float8 AS rrf
-      FROM (SELECT id, rnk FROM dense UNION ALL SELECT id, rnk FROM sparse) r
-      GROUP BY id
-    )
-    SELECT g.id, g.question, g.narrative, g.sql, g.chart_type, g.status,
-           g.correction_note, g.use_count, g.verified_at::text AS verified_at, f.rrf
-    FROM fused f JOIN golden_examples g USING (id)
-    ORDER BY (f.rrf * CASE WHEN g.status='corrected' THEN 1.25 ELSE 1.0 END) DESC
-    LIMIT $3
-  `, [vec, question, k]);
+  const rows = await withTimeout(
+    sql.unsafe<GoldenRow[]>(`
+      WITH dense AS (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rnk
+        FROM golden_examples
+        WHERE embedding IS NOT NULL
+        ORDER BY embedding <=> $1::vector
+        LIMIT ${STAGE_LIMIT}
+      ),
+      sparse AS (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY ts_rank_cd(fts, q) DESC) AS rnk
+        FROM golden_examples, plainto_tsquery('english', $2) AS q
+        WHERE fts @@ q
+        LIMIT ${STAGE_LIMIT}
+      ),
+      fused AS (
+        SELECT id, SUM(1.0 / (${RRF_K} + rnk))::float8 AS rrf
+        FROM (SELECT id, rnk FROM dense UNION ALL SELECT id, rnk FROM sparse) r
+        GROUP BY id
+      )
+      SELECT g.id, g.question, g.narrative, g.sql, g.chart_type, g.status,
+             g.correction_note, g.use_count, g.verified_at::text AS verified_at, f.rrf
+      FROM fused f JOIN golden_examples g USING (id)
+      ORDER BY (f.rrf * CASE WHEN g.status='corrected' THEN 1.25 ELSE 1.0 END) DESC
+      LIMIT $3
+    `, [vec, question, k]) as unknown as Promise<GoldenRow[]>,
+    RETRIEVAL_TIMEOUT_MS,
+    'retrieveGoldenExamples',
+  );
   return rows;
 }
 

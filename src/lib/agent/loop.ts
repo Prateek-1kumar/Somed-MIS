@@ -51,6 +51,12 @@ export async function* runAgent(
 ): AsyncGenerator<AgentEvent> {
   try {
     const { userMessage, history } = input;
+
+    // Yield this BEFORE retrieveAll so the UI shows progress immediately —
+    // embedding + retrieval can take 1-3s and the user otherwise sees a
+    // blank trace and assumes the chat is stuck.
+    yield { type: 'thinking', text: 'Reading question and retrieving related verified patterns…' };
+
     const { golden: goldenExamples, anchors } = await retrieveAll(userMessage, {
       goldenK: 5,
       anchorsK: 3,
@@ -62,8 +68,6 @@ export async function* runAgent(
       history,
     });
     const model = deps.createModel();
-
-    yield { type: 'thinking', text: 'Reading question and retrieving related verified patterns…' };
 
     let roundTrip = await model.start({
       systemPrompt,

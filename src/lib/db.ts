@@ -18,6 +18,10 @@ if (!url && typeof window === 'undefined' && process.env.NODE_ENV !== 'test') {
 const sql = postgres(url ?? 'postgres://invalid', {
   max: 1,
   idle_timeout: 20,
+  // Recycle connections after 30 min so stale TCP sockets (e.g. after a
+  // laptop sleep in dev) don't deadlock the max:1 slot forever.
+  max_lifetime: 60 * 30,
+  connect_timeout: 10,
   prepare: false,
 });
 
