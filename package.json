@@ -11,7 +11,8 @@
     "test:watch": "jest --watch",
     "parity-check": "npx -y tsx scripts/parity-check.ts",
     "prebuild": "tsx scripts/reindex-anchors.ts",
-    "reindex-anchors": "tsx scripts/reindex-anchors.ts"
+    "reindex-anchors": "tsx scripts/reindex-anchors.ts",
+    "migrate-golden-examples": "tsx scripts/migrate-golden-examples.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
