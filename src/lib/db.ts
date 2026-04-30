@@ -16,10 +16,13 @@ if (!url && typeof window === 'undefined' && process.env.NODE_ENV !== 'test') {
 }
 
 const sql = postgres(url ?? 'postgres://invalid', {
-  max: 1,
+  // max:1 deadlocks Promise.all of multiple queries against the Supabase
+  // transaction-mode pooler — the pool serializes them but the second query
+  // never gets dispatched. max:5 is enough to cover our concurrent paths
+  // (data-dictionary build issues 5 SELECT DISTINCTs in parallel; the agent
+  // loop runs golden_examples + report_anchors retrieval in parallel).
+  max: 5,
   idle_timeout: 20,
-  // Recycle connections after 30 min so stale TCP sockets (e.g. after a
-  // laptop sleep in dev) don't deadlock the max:1 slot forever.
   max_lifetime: 60 * 30,
   connect_timeout: 10,
   prepare: false,
