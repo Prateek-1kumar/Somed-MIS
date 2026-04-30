@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export interface DataFetchState<T> {
   data: T | null;
@@ -15,6 +15,12 @@ export interface DataFetchState<T> {
  *
  * Pass `JSON.stringify(filters)` (or any stable string) as the dep so React
  * sees a primitive change and triggers the effect deterministically.
+ *
+ * Implementation note: `hasFetched` is a ref (not state) — we don't want it
+ * to trigger re-renders, just to remember whether the next fetch is a first
+ * load or a refetch. Calling setState from inside another setState's updater
+ * function (the previous version of this hook) is undefined behaviour in
+ * React 19; this version reads the ref synchronously instead.
  */
 export function useDataFetch<T>(
   fetcher: () => Promise<T>,
@@ -24,21 +30,22 @@ export function useDataFetch<T>(
   const [isFirstLoad, setFirstLoad] = useState(true);
   const [isRefetching, setRefetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasFetched = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
-    setData(prev => {
-      // If we have prior data, this is a refetch — dim it.
-      if (prev !== null) setRefetching(true); else setFirstLoad(true);
-      return prev;
-    });
+    if (hasFetched.current) {
+      setRefetching(true);
+    } else {
+      setFirstLoad(true);
+    }
     fetcher()
       .then(d => { if (!cancelled) setData(d); })
       .catch(e => { if (!cancelled) setError(String(e)); })
       .finally(() => {
         if (cancelled) return;
+        hasFetched.current = true;
         setFirstLoad(false);
         setRefetching(false);
       });
