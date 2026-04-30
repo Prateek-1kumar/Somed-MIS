@@ -34,12 +34,18 @@ export function useDataFetch<T>(
 
   useEffect(() => {
     let cancelled = false;
+    // We set loading state synchronously when deps change. The "set-state-in-effect"
+    // rule warns about this, but here it's load-bearing: the next render must
+    // see isFirstLoad/isRefetching=true so the consumer flips to skeleton or
+    // dim before the fetch resolves. There's no way to derive this from render.
+    /* eslint-disable react-hooks/set-state-in-effect */
     setError(null);
     if (hasFetched.current) {
       setRefetching(true);
     } else {
       setFirstLoad(true);
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
     fetcher()
       .then(d => { if (!cancelled) setData(d); })
       .catch(e => { if (!cancelled) setError(String(e)); })

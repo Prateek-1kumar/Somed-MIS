@@ -3,6 +3,8 @@ import React, { useRef } from 'react';
 import ReportTable from '@/components/ReportTable';
 import ReportChart from '@/components/ReportChart';
 import ExportMenu from '@/components/ExportMenu';
+import { CodeBlock } from '@/components/ui/CodeBlock';
+import { Markdown } from '@/components/ui/Markdown';
 import type { ChartType as LegacyChartType } from '@/reports';
 import type { FinalAnswer } from '@/lib/agent/types';
 
@@ -94,7 +96,11 @@ function KpiBlock({ headline, narrative }: { headline: string; narrative: string
       <div className="text-4xl sm:text-5xl font-bold tracking-tight text-[var(--text-primary)]">
         {headline}
       </div>
-      <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{narrative}</p>
+      {narrative && (
+        <div className="text-sm text-[var(--text-secondary)] leading-relaxed">
+          <Markdown>{narrative}</Markdown>
+        </div>
+      )}
     </div>
   );
 }
@@ -131,10 +137,16 @@ export default function AnswerCard({ answer, rows, rowsError }: Props) {
               {answer.headline}
             </p>
           )}
-          <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-            {answer.narrative}
-          </p>
+          {answer.narrative && (
+            <div className="text-sm text-[var(--text-secondary)] leading-relaxed">
+              <Markdown>{answer.narrative}</Markdown>
+            </div>
+          )}
         </div>
+      )}
+
+      {answer.sql && (
+        <CodeBlock code={answer.sql} language="sql" />
       )}
 
       {rowsError && (
