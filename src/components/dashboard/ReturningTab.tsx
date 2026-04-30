@@ -1,32 +1,60 @@
 // src/components/dashboard/ReturningTab.tsx
 'use client';
-import { useEffect, useState } from 'react';
+import { Loader2, Inbox } from 'lucide-react';
 import { runDashboardQuery } from '@/app/reports/actions';
 import { Filters } from '@/lib/schema';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import KpiCard from '@/components/KpiCard';
+import { useDataFetch } from '@/lib/hooks/useDataFetch';
+import { KpiCardSkeleton, ChartSkeleton } from '@/components/ui/skeletons';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { fmtL, fmtLakhs } from './shared';
 
 interface Props { filters: Filters }
 
-const SLICE_COLORS = ['#f43f5e', '#f59e0b', '#8b5cf6', '#0ea5e9', '#10b981'];
+const SLICE_COLORS = ['#ef4444', '#f59e0b', '#8b5cf6', '#0ea5e9', 'var(--accent)'];
 
 export default function ReturningTab({ filters }: Props) {
-  const [data, setData] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isFirstLoad, isRefetching, error } = useDataFetch(
+    () => runDashboardQuery('returning', filters)
+      .then(rows => (rows[0] as Record<string, number | null>) ?? {}),
+    [JSON.stringify(filters)],
+  );
 
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    runDashboardQuery('returning', filters)
-      .then(rows => setData((rows[0] as Record<string, number>) ?? {}))
-      .catch(e => setError(String(e)))
-      .finally(() => setLoading(false));
-  }, [filters]);
+  if (error) return <ErrorBanner error={error} />;
+  if (isFirstLoad || !data) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 2 }).map((_, i) => <KpiCardSkeleton key={i} />)}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <ChartSkeleton height={300} />
+          <ChartSkeleton height={300} />
+        </div>
+      </div>
+    );
+  }
 
-  const n = (k: string) => Number(data[k] ?? 0);
-  const abs = (k: string) => Math.abs(n(k));
+  if (Object.keys(data).length === 0) {
+    return (
+      <EmptyState
+        icon={<Inbox className="w-5 h-5" />}
+        title="No data for this filter combination"
+        description="Try removing a filter or selecting a different financial year."
+      />
+    );
+  }
+
+  const get = (k: string): number | null => {
+    const v = data[k];
+    return v === null || v === undefined ? null : Number(v);
+  };
+  const abs = (k: string) => {
+    const v = get(k);
+    return v === null ? 0 : Math.abs(v);
+  };
 
   const total = abs('total_returning');
 
@@ -58,22 +86,35 @@ export default function ReturningTab({ filters }: Props) {
     );
   };
 
+  const totalReturning = get('total_returning');
+  const creditNotes = get('credit_notes');
+
   return (
-    <div className="space-y-6">
-      {loading && <p className="text-sm text-[var(--text-muted)]">Loading…</p>}
-      {error && <p className="text-sm text-red-500">{error}</p>}
+    <div className={`space-y-6 relative transition-opacity ${isRefetching ? 'opacity-60' : ''}`}>
+      {isRefetching && (
+        <Loader2 className="absolute top-2 right-2 w-4 h-4 animate-spin text-[var(--text-muted)]" />
+      )}
 
       {/* Summary KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard label="Total Returning (GRI)" value={fmtL(abs('total_returning'))} sub="return_amt" alert />
-        <KpiCard label="Credit Notes"          value={fmtL(n('credit_notes'))}       sub="cn_value — issued vs free goods" />
+        <KpiCard
+          label="Total Returning (GRI)"
+          value={fmtL(totalReturning === null ? null : Math.abs(totalReturning), { whenMissing: '—' })}
+          sub="return_amt"
+          alert
+        />
+        <KpiCard
+          label="Credit Notes"
+          value={fmtL(creditNotes, { whenMissing: '—' })}
+          sub="cn_value — issued vs free goods"
+        />
       </div>
 
       {/* Pie + Breakdown Table */}
       {total > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Pie Chart */}
-          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-5 shadow-sm">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-5 shadow-[var(--shadow-card)]">
             <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
               Return Breakdown by Expiry
             </h3>
@@ -106,16 +147,16 @@ export default function ReturningTab({ filters }: Props) {
           </div>
 
           {/* Breakdown Table */}
-          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden self-start">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-[var(--shadow-card)] overflow-hidden self-start">
             <div className="px-5 py-4 border-b border-[var(--border)]">
               <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Expiry Breakdown</h3>
             </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg-surface-raised)]">
-                  <th className="px-5 py-2.5 text-left text-xs font-semibold text-[var(--text-muted)]">Category</th>
-                  <th className="px-5 py-2.5 text-right text-xs font-semibold text-[var(--text-muted)]">Value (₹L)</th>
-                  <th className="px-5 py-2.5 text-right text-xs font-semibold text-[var(--text-muted)]">% of Total</th>
+                  <th className="px-5 py-2.5 text-left text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Category</th>
+                  <th className="px-5 py-2.5 text-right text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Value (₹L)</th>
+                  <th className="px-5 py-2.5 text-right text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">% of Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,7 +186,7 @@ export default function ReturningTab({ filters }: Props) {
             <div className="px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-surface-raised)]/50">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[var(--text-muted)]">Credit Notes (issued vs free goods)</span>
-                <span className="font-semibold text-[var(--text-primary)]">{fmtLakhs(n('credit_notes'))}</span>
+                <span className="font-semibold text-[var(--text-primary)]">{fmtLakhs(creditNotes ?? 0)}</span>
               </div>
             </div>
           </div>
