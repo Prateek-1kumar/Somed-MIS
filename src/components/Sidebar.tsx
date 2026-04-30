@@ -1,50 +1,63 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
+import {
+  LayoutDashboard,
+  MessageCircle,
+  BookOpen,
+  FolderKanban,
+  Upload,
+  BarChart3,
+  ChevronRight,
+  Sun,
+  Moon,
+  X,
+} from 'lucide-react';
 import { REPORTS, REPORT_GROUPS } from '@/reports';
-import { LayoutDashboard, MessageSquare, FolderKanban, UploadCloud, Moon, Sun, ChevronRight, BarChart3 } from 'lucide-react'; // Let's use lucide-react if available or simple SVGs. I will use SVGs if lucide-react isn't there, but it's simpler to just provide elegant HTML.
 
-function toggleDark() {
-  const html = document.documentElement;
-  if (html.classList.contains('dark')) {
-    html.classList.remove('dark');
-    localStorage.setItem('theme', 'light');
-  } else {
-    html.classList.add('dark');
-    localStorage.setItem('theme', 'dark');
-  }
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
 }
 
-function NavLink({ href, children, active, icon }: { href: string; children: ReactNode; active: boolean; icon?: ReactNode }) {
+function NavLink({
+  href,
+  children,
+  active,
+  icon,
+}: {
+  href: string;
+  children: ReactNode;
+  active: boolean;
+  icon: ReactNode;
+}) {
   return (
     <Link
       href={href}
-      className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ease-in-out
-        ${active 
-          ? 'bg-[var(--bg-surface-raised)] text-[var(--accent)] shadow-sm ring-1 ring-[var(--border)]' 
-          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-raised)]'
+      className={`group flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ease-in-out
+        ${
+          active
+            ? 'bg-[var(--accent-light)] text-[var(--accent)] border-l-[3px] border-[var(--accent)] -ml-[3px] pl-[14px] pr-3'
+            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-raised)] px-3'
         }`}
     >
-      {icon && (
-        <span className={`${active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'} transition-colors`}>
-          {icon}
-        </span>
-      )}
+      <span
+        className={`${
+          active
+            ? 'text-[var(--accent)]'
+            : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'
+        } transition-colors flex-shrink-0`}
+      >
+        {icon}
+      </span>
       <span className="truncate flex-1">{children}</span>
-      {!active && <ChevronRightIcon className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] -mr-1" />}
+      {!active && (
+        <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] -mr-1" />
+      )}
     </Link>
   );
 }
-
-// Simple icons to avoid dependency issues
-const DashboardIcon = ({ className }: {className?: string}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>;
-const ChatIcon = ({ className }: {className?: string}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>;
-const FolderIcon = ({ className }: {className?: string}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>;
-const UploadIcon = ({ className }: {className?: string}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>;
-const ChartIcon = ({ className }: {className?: string}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>;
-const BrainIcon = ({ className }: {className?: string}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg>;
-const ChevronRightIcon = ({ className }: {className?: string}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>;
 
 function LegacyReportsSection({ activeId }: { activeId: string | undefined }) {
   const [open, setOpen] = useState(false);
@@ -52,34 +65,31 @@ function LegacyReportsSection({ activeId }: { activeId: string | undefined }) {
   return (
     <div>
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider hover:text-[var(--text-primary)] transition-colors rounded-lg hover:bg-[var(--bg-surface-raised)]"
       >
         <span>Legacy Reports</span>
-        <svg
+        <ChevronRight
           className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m9 18 6-6-6-6" />
-        </svg>
+        />
       </button>
 
       {open && (
         <div className="mt-1.5 space-y-1.5">
-          {REPORT_GROUPS.map(group => {
-            const groupReports = REPORTS.filter(r => r.group === group);
+          {REPORT_GROUPS.map((group) => {
+            const groupReports = REPORTS.filter((r) => r.group === group);
             if (groupReports.length === 0) return null;
             return (
               <div key={group} className="space-y-1">
                 <h3 className="px-3 text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mt-2">
                   {group}
                 </h3>
-                {groupReports.map(report => (
+                {groupReports.map((report) => (
                   <NavLink
                     key={report.id}
                     href={`/reports/${report.id}`}
                     active={activeId === report.id}
-                    icon={<ChartIcon />}
+                    icon={<BarChart3 className="w-[18px] h-[18px]" />}
                   >
                     {report.name}
                   </NavLink>
@@ -93,58 +103,166 @@ function LegacyReportsSection({ activeId }: { activeId: string | undefined }) {
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const params = useParams<{ reportId?: string }>();
   const activeId = params?.reportId;
+  const [isDark, setIsDark] = useState(false);
+
+  // Track dark mode state.
+  useEffect(() => {
+    const update = () =>
+      setIsDark(document.documentElement.classList.contains('dark'));
+    update();
+    const obs = new MutationObserver(update);
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    return () => obs.disconnect();
+  }, []);
+
+  // Auto-close mobile overlay when route changes.
+  useEffect(() => {
+    onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  // Close on Escape when open.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  const toggleDark = () => {
+    const html = document.documentElement;
+    if (html.classList.contains('dark')) {
+      html.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    } else {
+      html.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    }
+  };
 
   return (
-    <aside className="w-72 flex-shrink-0 bg-[var(--bg-surface)] border-r border-[var(--border)] flex flex-col h-screen transition-colors duration-200">
-      {/* Header */}
-      <div className="h-16 px-6 flex items-center justify-between border-b border-[var(--border)] shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[var(--text-primary)] flex items-center justify-center shadow-inner">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-[var(--bg-surface)]"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          </div>
-          <div>
-            <h1 className="text-sm font-bold text-[var(--text-primary)] tracking-wide uppercase">Shomed</h1>
-            <p className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">Remedies MIS</p>
-          </div>
-        </div>
-        <button 
-          onClick={toggleDark} 
-          title="Toggle theme"
-          className="p-2 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-surface-raised)] transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-        </button>
-      </div>
+    <>
+      {/* Mobile backdrop */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={onClose}
+          aria-hidden
+        />
+      )}
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-[var(--border-strong)]">
-        
-        {/* Main Tools & Dashboard section */}
-        <div className="space-y-1.5">
-          <NavLink href="/" active={pathname === '/'} icon={<DashboardIcon />}>Dashboard</NavLink>
-          <NavLink href="/chat" active={pathname === '/chat'} icon={<ChatIcon />}>Chat with Data</NavLink>
-          <NavLink href="/learned-patterns" active={pathname === '/learned-patterns'} icon={<BrainIcon />}>Learned Patterns</NavLink>
-          <NavLink href="/my-reports" active={pathname === '/my-reports'} icon={<FolderIcon />}>My Reports</NavLink>
-          <NavLink href="/upload" active={pathname === '/upload'} icon={<UploadIcon />}>Upload CSV</NavLink>
+      <aside
+        className={`w-64 flex-shrink-0 bg-[var(--bg-surface)] border-r border-[var(--border)]
+          flex flex-col h-screen transition-transform duration-200
+          fixed md:static top-0 left-0 z-50
+          ${open ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
+        aria-modal={open}
+        role={open ? 'dialog' : undefined}
+      >
+        {/* Header */}
+        <div className="h-16 px-6 flex items-center justify-between border-b border-[var(--border)] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center shadow-inner">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-4 h-4"
+              >
+                <path d="M12 2v20" />
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-sm font-bold text-[var(--text-primary)] tracking-wide uppercase">
+                Shomed
+              </h1>
+              <p className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
+                Remedies MIS
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleDark}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="p-2 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-surface-raised)] hover:text-[var(--text-primary)] transition-colors"
+              aria-label="Toggle theme"
+            >
+              {isDark ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
+            </button>
+
+            <button
+              onClick={onClose}
+              className="p-2 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-surface-raised)] hover:text-[var(--text-primary)] transition-colors md:hidden"
+              aria-label="Close sidebar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Reports Groups */}
-        <LegacyReportsSection activeId={activeId} />
-      </nav>
-      
-      {/* Footer / User Profile area optional placeholder */}
-      <div className="p-4 border-t border-[var(--border)] shrink-0">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-surface-raised)] transition-colors cursor-pointer text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
-          <div className="w-8 h-8 rounded-full bg-[var(--text-primary)] flex items-center justify-center text-[var(--bg-surface)] text-xs shadow-sm">
-            US
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div className="space-y-1.5">
+            <NavLink
+              href="/"
+              active={pathname === '/'}
+              icon={<LayoutDashboard className="w-[18px] h-[18px]" />}
+            >
+              Dashboard
+            </NavLink>
+            <NavLink
+              href="/chat"
+              active={pathname === '/chat'}
+              icon={<MessageCircle className="w-[18px] h-[18px]" />}
+            >
+              Chat with Data
+            </NavLink>
+            <NavLink
+              href="/learned-patterns"
+              active={pathname === '/learned-patterns'}
+              icon={<BookOpen className="w-[18px] h-[18px]" />}
+            >
+              Learned Patterns
+            </NavLink>
+            <NavLink
+              href="/my-reports"
+              active={pathname === '/my-reports'}
+              icon={<FolderKanban className="w-[18px] h-[18px]" />}
+            >
+              My Reports
+            </NavLink>
+            <NavLink
+              href="/upload"
+              active={pathname === '/upload'}
+              icon={<Upload className="w-[18px] h-[18px]" />}
+            >
+              Upload CSV
+            </NavLink>
           </div>
-          <span className="truncate">User Profile</span>
-        </div>
-      </div>
-    </aside>
+
+          <LegacyReportsSection activeId={activeId} />
+        </nav>
+      </aside>
+    </>
   );
 }

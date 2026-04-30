@@ -15,13 +15,19 @@
   --text-secondary: #52525b;
   --text-muted: #a1a1aa;
   --text-inverse: #ffffff;
-  --accent: #18181b;
-  --accent-hover: #3f3f46;
-  --accent-light: #e4e4e7;
+  --accent:        #059669;   /* emerald-600 — buttons, focus rings, active nav, brand */
+  --accent-hover:  #047857;   /* emerald-700 */
+  --accent-light:  #d1fae5;   /* emerald-100 — subtle backgrounds, pills */
+  --accent-soft:   #ecfdf5;   /* emerald-50 — surface tinting */
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
   --sidebar-width: 256px;
+
+  /* NEW: shadow tokens. */
+  --shadow-card:        0 1px 2px rgb(0 0 0 / 0.04), 0 0 0 1px var(--border);
+  --shadow-card-hover:  0 4px 12px rgb(0 0 0 / 0.06), 0 0 0 1px var(--border-strong);
+  --shadow-popover:     0 8px 24px rgb(0 0 0 / 0.10);
 }
 
 .dark {
@@ -36,9 +42,10 @@
   --text-secondary: #a1a1aa;
   --text-muted: #71717a;
   --text-inverse: #18181b;
-  --accent: #fafafa;
-  --accent-hover: #d4d4d8;
-  --accent-light: #27272a;
+  --accent:        #34d399;   /* emerald-400 — brighter for contrast on onyx */
+  --accent-hover:  #6ee7b7;
+  --accent-light:  #064e3b;   /* emerald-900 inverted */
+  --accent-soft:   #022c22;
 }
 
 * {

@@ -1,14 +1,44 @@
 /**
  * @jest-environment node
  */
+
+// Mock retrieval module — tools.ts calls retrieveEntities (search_values tier 1)
+// and the retrieve* family (retrieve tool). We control those behaviors per test
+// instead of hitting the live DB.
+jest.mock('../retrieval', () => ({
+  retrieveEntities:        jest.fn(),
+  retrieveGoldenExamples:  jest.fn(),
+  retrieveReportAnchors:   jest.fn(),
+  retrieveAll:             jest.fn(),
+}));
+
 import {
   TOOL_DEFINITIONS,
   executeTool,
   parseResponseTool,
   type ToolContext,
 } from './tools';
-import { createStore, createInMemoryProvider } from '../golden-examples';
+import {
+  retrieveEntities,
+  retrieveGoldenExamples,
+  retrieveReportAnchors,
+  retrieveAll,
+} from '../retrieval';
 import type { ServerDb, DataDictionary, QueryResult } from '../server-db';
+
+const mockRetrieveEntities       = retrieveEntities       as jest.MockedFunction<typeof retrieveEntities>;
+const mockRetrieveGoldenExamples = retrieveGoldenExamples as jest.MockedFunction<typeof retrieveGoldenExamples>;
+const mockRetrieveReportAnchors  = retrieveReportAnchors  as jest.MockedFunction<typeof retrieveReportAnchors>;
+const mockRetrieveAll            = retrieveAll            as jest.MockedFunction<typeof retrieveAll>;
+
+beforeEach(() => {
+  mockRetrieveEntities.mockReset();
+  mockRetrieveGoldenExamples.mockReset();
+  mockRetrieveReportAnchors.mockReset();
+  mockRetrieveAll.mockReset();
+  // Default: entity index returns empty (forces ILIKE fallback in search_values).
+  mockRetrieveEntities.mockResolvedValue([]);
+});
 
 function fakeDictionary(): DataDictionary {
   return {
@@ -31,18 +61,17 @@ function makeCtx(sqlHandler: (sql: string) => QueryResult): ToolContext {
     dictionary: fakeDictionary(),
     dataVersion: 'v1',
   };
-  const goldenStore = createStore(createInMemoryProvider());
-  return { db, goldenStore };
+  return { db };
 }
 
 describe('TOOL_DEFINITIONS', () => {
   it('includes all 6 tools', () => {
     const names = TOOL_DEFINITIONS.map(t => t.name).sort();
     expect(names).toEqual([
-      'get_golden_examples',
       'list_distinct_values',
       'respond_with_answer',
       'respond_with_clarification',
+      'retrieve',
       'run_sql',
       'search_values',
     ]);
@@ -56,8 +85,28 @@ describe('TOOL_DEFINITIONS', () => {
   });
 });
 
-describe('executeTool — search_values', () => {
-  it('returns values matching pattern', async () => {
+describe('executeTool — search_values (tier 1: entity_index)', () => {
+  it('returns entity_values matches without hitting the data table', async () => {
+    mockRetrieveEntities.mockResolvedValue([
+      { value: 'CROCIN', sim: 0.9, display_count: 1200 },
+      { value: 'CROCEAL', sim: 0.6, display_count: 80 },
+    ]);
+    let dataQueried = false;
+    const ctx = makeCtx(() => { dataQueried = true; return { rows: [], columns: [], rowCount: 0 }; });
+    const result = await executeTool(
+      { id: '1', name: 'search_values', args: { column: 'item_name', pattern: 'crockin' } },
+      ctx,
+    ) as { values: string[]; source: string };
+    expect(result.values).toEqual(['CROCIN', 'CROCEAL']);
+    expect(result.source).toBe('entity_index');
+    expect(dataQueried).toBe(false);
+    expect(mockRetrieveEntities).toHaveBeenCalledWith('brand', 'crockin', 20);
+  });
+});
+
+describe('executeTool — search_values (tier 2: ILIKE fallback)', () => {
+  it('falls back to ILIKE when entity_index returns 0', async () => {
+    mockRetrieveEntities.mockResolvedValue([]);
     const ctx = makeCtx(sql => {
       expect(sql).toMatch(/ILIKE '%shovert%'/i);
       return {
@@ -68,9 +117,22 @@ describe('executeTool — search_values', () => {
     const result = await executeTool(
       { id: '1', name: 'search_values', args: { column: 'item_name', pattern: 'shovert' } },
       ctx,
-    ) as { values: string[]; rowCount: number };
+    ) as { values: string[]; source: string };
     expect(result.values).toEqual(['SHOVERT-8 TAB 10S', 'SHOVERT-16 TAB 10S']);
-    expect(result.rowCount).toBe(2);
+    expect(result.source).toBe('data_ilike');
+  });
+
+  it('skips entity_index for unmapped columns and goes straight to ILIKE', async () => {
+    const ctx = makeCtx(sql => {
+      expect(sql).toMatch(/ILIKE '%abc%'/i);
+      return { rows: [{ value: 'ABC Pharma' }], columns: ['value'], rowCount: 1 };
+    });
+    const result = await executeTool(
+      { id: '1', name: 'search_values', args: { column: 'customer_n', pattern: 'abc' } },
+      ctx,
+    ) as { values: string[]; source: string };
+    expect(result.source).toBe('data_ilike');
+    expect(mockRetrieveEntities).not.toHaveBeenCalled();
   });
 
   it('rejects unknown column', async () => {
@@ -91,7 +153,7 @@ describe('executeTool — search_values', () => {
     expect(result.error).toMatch(/pattern required/);
   });
 
-  it('escapes single quotes in pattern', async () => {
+  it('escapes single quotes in ILIKE fallback', async () => {
     let capturedSql = '';
     const ctx = makeCtx(sql => {
       capturedSql = sql;
@@ -141,37 +203,68 @@ describe('executeTool — run_sql', () => {
   });
 });
 
-describe('executeTool — get_golden_examples', () => {
-  it('returns examples matching question tags', async () => {
-    const provider = createInMemoryProvider([{
-      id: 'ge_1',
-      question: 'Top brands primary FY 2025-26',
-      question_tags: ['metric:net_primary', 'period:current_fy', 'dim:brand'],
-      narrative: '',
-      sql: 'SELECT 1',
-      chart_type: 'hbar',
-      assumptions: [],
-      status: 'verified' as const,
-      created_at: new Date().toISOString(),
-      verified_at: new Date().toISOString(),
-      use_count: 0,
-    }]);
-    const goldenStore = createStore(provider);
-    const ctx: ToolContext = {
-      db: {
-        runSafe: async () => ({ rows: [], columns: [], rowCount: 0 }),
-        runTrusted: async () => ({ rows: [], columns: [], rowCount: 0 }),
-        dictionary: fakeDictionary(),
-        dataVersion: 'v1',
-      },
-      goldenStore,
-    };
+describe('executeTool — retrieve', () => {
+  it('rejects missing query', async () => {
+    const ctx = makeCtx(() => ({ rows: [], columns: [], rowCount: 0 }));
     const result = await executeTool(
-      { id: '1', name: 'get_golden_examples', args: { question: 'top brands by primary sales this year' } },
+      { id: '1', name: 'retrieve', args: {} },
       ctx,
-    ) as { examples: { sql: string }[] };
-    expect(result.examples).toHaveLength(1);
-    expect(result.examples[0].sql).toBe('SELECT 1');
+    ) as { error: string };
+    expect(result.error).toMatch(/query required/);
+  });
+
+  it('corpus=golden dispatches to retrieveGoldenExamples only', async () => {
+    mockRetrieveGoldenExamples.mockResolvedValue([{
+      id: 'g1', question: 'top brands', narrative: '', sql: 'SELECT 1',
+      chart_type: 'hbar', status: 'verified', correction_note: null, use_count: 0, verified_at: '2026-04-01', rrf: 0.05,
+    }]);
+    const ctx = makeCtx(() => ({ rows: [], columns: [], rowCount: 0 }));
+    const result = await executeTool(
+      { id: '1', name: 'retrieve', args: { query: 'top brands', corpus: 'golden', k: 3 } },
+      ctx,
+    ) as { golden: { sql: string }[] };
+    expect(result.golden).toHaveLength(1);
+    expect(result.golden[0].sql).toBe('SELECT 1');
+    expect(mockRetrieveGoldenExamples).toHaveBeenCalledWith('top brands', { k: 3 });
+    expect(mockRetrieveReportAnchors).not.toHaveBeenCalled();
+    expect(mockRetrieveAll).not.toHaveBeenCalled();
+  });
+
+  it('corpus=reports dispatches to retrieveReportAnchors only', async () => {
+    mockRetrieveReportAnchors.mockResolvedValue([{
+      report_id: 'r1', name: 'Sales Analysis', group_name: 'Sales',
+      anchor_question: 'What are…', source_sql: 'SELECT 2', rrf: 0.04,
+    }]);
+    const ctx = makeCtx(() => ({ rows: [], columns: [], rowCount: 0 }));
+    const result = await executeTool(
+      { id: '1', name: 'retrieve', args: { query: 'sales', corpus: 'reports' } },
+      ctx,
+    ) as { anchors: { sql: string }[] };
+    expect(result.anchors).toHaveLength(1);
+    expect(result.anchors[0].sql).toBe('SELECT 2');
+    expect(mockRetrieveAll).not.toHaveBeenCalled();
+  });
+
+  it("corpus='all' (default) dispatches to retrieveAll with goldenK=k, anchorsK=ceil(k*0.6)", async () => {
+    mockRetrieveAll.mockResolvedValue({
+      embedding: new Array(1536).fill(0),
+      golden: [{
+        id: 'g1', question: 'q', narrative: '', sql: 'SELECT 3', chart_type: 'kpi',
+        status: 'verified', correction_note: null, use_count: 0, verified_at: '2026-04-01', rrf: 0.03,
+      }],
+      anchors: [{
+        report_id: 'r2', name: 'X', group_name: 'Sales',
+        anchor_question: 'a', source_sql: 'SELECT 4', rrf: 0.02,
+      }],
+    });
+    const ctx = makeCtx(() => ({ rows: [], columns: [], rowCount: 0 }));
+    const result = await executeTool(
+      { id: '1', name: 'retrieve', args: { query: 'foo', k: 5 } },
+      ctx,
+    ) as { golden: unknown[]; anchors: unknown[] };
+    expect(result.golden).toHaveLength(1);
+    expect(result.anchors).toHaveLength(1);
+    expect(mockRetrieveAll).toHaveBeenCalledWith('foo', { goldenK: 5, anchorsK: 3 });
   });
 });
 

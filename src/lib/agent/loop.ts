@@ -23,8 +23,7 @@ import type {
   ToolResultForModel,
 } from './types';
 import type { ServerDb } from '../server-db';
-import type { GoldenExamplesStore } from '../golden-examples';
-import { extractTags } from '../golden-examples';
+import { retrieveAll } from '../retrieval';
 import { buildSystemPrompt } from './prompt';
 import {
   TOOL_DEFINITIONS,
@@ -43,7 +42,6 @@ export interface RunAgentInput {
 
 export interface RunAgentDeps {
   db: ServerDb;
-  goldenStore: GoldenExamplesStore;
   createModel(): ModelAdapter;
 }
 
@@ -53,16 +51,26 @@ export async function* runAgent(
 ): AsyncGenerator<AgentEvent> {
   try {
     const { userMessage, history } = input;
-    const tags = extractTags(userMessage, deps.db.dictionary);
-    const goldenExamples = await deps.goldenStore.topK(tags, 5);
+
+    // Yield this BEFORE retrieveAll so the UI shows progress immediately —
+    // embedding + retrieval can take 1-3s and the user otherwise sees a
+    // blank trace and assumes the chat is stuck.
+    yield { type: 'thinking', text: 'Reading question and retrieving related verified patterns…' };
+
+    // k tuned for prompt-token budget: each golden example with full SQL is
+    // ~250 tokens, each anchor is ~200. The hybrid retriever ranks by RRF so
+    // the top 3/2 capture most of the signal of top 5/3.
+    const { golden: goldenExamples, anchors } = await retrieveAll(userMessage, {
+      goldenK: 3,
+      anchorsK: 2,
+    });
     const systemPrompt = buildSystemPrompt({
       dictionary: deps.db.dictionary,
       goldenExamples,
+      anchors,
       history,
     });
     const model = deps.createModel();
-
-    yield { type: 'thinking', text: 'Reading question and retrieving related verified patterns…' };
 
     let roundTrip = await model.start({
       systemPrompt,
@@ -137,7 +145,6 @@ export async function* runAgent(
         yield { type: 'tool_call', id: call.id, tool: call.name, args: call.args };
         const result = await executeTool(call as ToolCall, {
           db: deps.db,
-          goldenStore: deps.goldenStore,
         });
         yield { type: 'tool_result', id: call.id, result };
         results.push({ id: call.id, name: call.name, result });

@@ -9,7 +9,11 @@
     "lint": "eslint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "parity-check": "npx -y tsx scripts/parity-check.ts"
+    "parity-check": "npx -y tsx scripts/parity-check.ts",
+    "prebuild": "tsx scripts/reindex-anchors.ts",
+    "reindex-anchors": "tsx scripts/reindex-anchors.ts",
+    "migrate-golden-examples": "tsx scripts/migrate-golden-examples.ts",
+    "seed-entity-index": "tsx scripts/seed-entity-index.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -25,6 +29,7 @@
     "postgres": "^3.4.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.8.1",
     "xlsx": "^0.18.5"
   },
@@ -38,12 +43,14 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "jest": "^30.3.0",
     "jest-environment-jsdom": "^30.3.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.9",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

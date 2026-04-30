@@ -5,7 +5,13 @@
 // a round.
 
 import type { ServerDb } from '../server-db';
-import type { GoldenExamplesStore } from '../golden-examples';
+import {
+  retrieveGoldenExamples,
+  retrieveReportAnchors,
+  retrieveAll,
+  retrieveEntities,
+} from '../retrieval';
+import { isEntityColumn, ENTITY_KIND_BY_COLUMN } from '../entity-index';
 import type {
   ToolDefinition,
   ToolCall,
@@ -62,16 +68,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
-    name: 'get_golden_examples',
+    name: 'retrieve',
     description:
-      'Retrieve additional team-verified Q/SQL patterns for a refined question. The top-5 matching examples are already in your system prompt; call this if you need more.',
+      'Retrieve more team-verified Q→SQL examples and/or expert ReportDef SQL templates that match a refined question. Top-K of each are already in your system prompt; call this when the upfront slice felt off-topic.',
     parameters: {
       type: 'object',
       properties: {
-        question: { type: 'string', description: 'question to match against prior examples' },
-        k: { type: 'integer', description: 'max examples to return (default 5)' },
+        query:  { type: 'string', description: 'natural-language question to match patterns against' },
+        corpus: { type: 'string', description: "one of: 'golden' | 'reports' | 'all' (default 'all')" },
+        k:      { type: 'integer', description: 'max examples to return (default 5; for corpus=all, k goldens + ceil(k*0.6) anchors)' },
       },
-      required: ['question'],
+      required: ['query'],
     },
   },
   {
@@ -115,7 +122,6 @@ export const RESPONSE_TOOL_NAMES = new Set(['respond_with_answer', 'respond_with
 
 export interface ToolContext {
   db: ServerDb;
-  goldenStore: GoldenExamplesStore;
 }
 
 export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<unknown> {
@@ -123,7 +129,7 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<unk
     case 'search_values': return searchValues(call.args, ctx);
     case 'list_distinct_values': return listDistinctValues(call.args, ctx);
     case 'run_sql': return runSqlTool(call.args, ctx);
-    case 'get_golden_examples': return getGoldenExamplesTool(call.args, ctx);
+    case 'retrieve': return retrieveTool(call.args);
     default:
       return { error: `unknown tool: ${call.name}` };
   }
@@ -147,11 +153,32 @@ async function searchValues(args: Record<string, unknown>, ctx: ToolContext): Pr
     const pattern = String(args.pattern ?? '').trim();
     if (!pattern) return { error: 'pattern required' };
     const limit = clampInt(args.limit, 1, 100, 20);
+
+    // Tier 1: pg_trgm via entity_values for columns mapped to an EntityKind.
+    // Catches misspellings (e.g., "crockin" → CROCIN) and is faster than ILIKE
+    // on the 129K-row data table. Falls through to Tier 2 on zero matches.
+    if (isEntityColumn(column)) {
+      const kind = ENTITY_KIND_BY_COLUMN[column as keyof typeof ENTITY_KIND_BY_COLUMN]!;
+      const matches = await retrieveEntities(kind, pattern, limit);
+      if (matches.length > 0) {
+        return {
+          values: matches.map(m => m.value),
+          rowCount: matches.length,
+          source: 'entity_index',
+        };
+      }
+    }
+
+    // Tier 2: ILIKE fallback over the live data table.
     const safePattern = pattern.replace(/'/g, "''");
     const sql = `SELECT DISTINCT ${column} AS value FROM data WHERE ${column} ILIKE '%${safePattern}%' AND ${column} IS NOT NULL AND TRIM(${column}) <> '' ORDER BY ${column} LIMIT ${limit}`;
     const result = await ctx.db.runTrusted(sql);
     if (result.error) return { error: result.error };
-    return { values: result.rows.map(r => r.value), rowCount: result.rowCount };
+    return {
+      values: result.rows.map(r => r.value),
+      rowCount: result.rowCount,
+      source: 'data_ilike',
+    };
   } catch (e) {
     return { error: String(e) };
   }
@@ -188,20 +215,51 @@ async function runSqlTool(args: Record<string, unknown>, ctx: ToolContext): Prom
   };
 }
 
-async function getGoldenExamplesTool(args: Record<string, unknown>, ctx: ToolContext): Promise<unknown> {
+async function retrieveTool(args: Record<string, unknown>): Promise<unknown> {
   try {
-    const question = String(args.question ?? '').trim();
+    const query = String(args.query ?? '').trim();
+    const corpus = String(args.corpus ?? 'all') as 'golden' | 'reports' | 'all';
     const k = clampInt(args.k, 1, 10, 5);
-    if (!question) return { error: 'question required' };
-    const { extractTags } = await import('../golden-examples');
-    const tags = extractTags(question, ctx.db.dictionary);
-    const examples = await ctx.goldenStore.topK(tags, k);
+    if (!query) return { error: 'query required' };
+
+    if (corpus === 'golden') {
+      const examples = await retrieveGoldenExamples(query, { k });
+      return {
+        golden: examples.map(e => ({
+          question: e.question,
+          sql: e.sql,
+          status: e.status,
+          correction_note: e.correction_note,
+          narrative: e.narrative,
+        })),
+      };
+    }
+    if (corpus === 'reports') {
+      const anchors = await retrieveReportAnchors(query, { k });
+      return {
+        anchors: anchors.map(a => ({
+          name: a.name,
+          group: a.group_name,
+          anchor_question: a.anchor_question,
+          sql: a.source_sql,
+        })),
+      };
+    }
+    // corpus === 'all' (default): k goldens + ceil(k*0.6) anchors, embed once.
+    const r = await retrieveAll(query, { goldenK: k, anchorsK: Math.ceil(k * 0.6) });
     return {
-      examples: examples.map(e => ({
+      golden: r.golden.map(e => ({
         question: e.question,
         sql: e.sql,
         status: e.status,
         correction_note: e.correction_note,
+        narrative: e.narrative,
+      })),
+      anchors: r.anchors.map(a => ({
+        name: a.name,
+        group: a.group_name,
+        anchor_question: a.anchor_question,
+        sql: a.source_sql,
       })),
     };
   } catch (e) {

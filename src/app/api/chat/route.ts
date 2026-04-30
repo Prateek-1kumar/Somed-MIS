@@ -11,7 +11,6 @@
 import type { NextRequest } from 'next/server';
 import { runAgent } from '@/lib/agent/loop';
 import type { ConversationTurn, AgentEvent } from '@/lib/agent/types';
-import { createStore, vercelBlobGoldenProvider } from '@/lib/golden-examples';
 import { createModelFactory } from '@/lib/agent/model-factory';
 
 export const runtime = 'nodejs';
@@ -67,7 +66,6 @@ export async function POST(req: NextRequest) {
       try {
         const { getServerDb } = await import('@/lib/server-db');
         const db = await getServerDb();
-        const goldenStore = createStore(vercelBlobGoldenProvider);
         const createModel = createModelFactory({
           geminiApiKey,
           groqApiKey,
@@ -81,7 +79,7 @@ export async function POST(req: NextRequest) {
 
         for await (const event of runAgent(
           { userMessage: message, history },
-          { db, goldenStore, createModel },
+          { db, createModel },
         )) {
           controller.enqueue(encoder.encode(encodeSse(event)));
         }
