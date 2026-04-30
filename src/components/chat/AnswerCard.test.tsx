@@ -33,6 +33,21 @@ jest.mock('@/components/ExportMenu', () => {
   return { __esModule: true, default: MockExport };
 });
 
+// `react-markdown` ships ESM — Jest can't import it without a transform.
+// Stub the wrapper to a passthrough span so we can keep the test pure.
+jest.mock('@/components/ui/Markdown', () => {
+  const MockMarkdown = ({ children }: { children: string }) => <span>{children}</span>;
+  MockMarkdown.displayName = 'MockMarkdown';
+  return { Markdown: MockMarkdown };
+});
+
+// Stub CodeBlock too — it's a client component and not relevant for these helpers.
+jest.mock('@/components/ui/CodeBlock', () => {
+  const MockCodeBlock = ({ code }: { code: string }) => <pre data-testid="code-mock">{code}</pre>;
+  MockCodeBlock.displayName = 'MockCodeBlock';
+  return { CodeBlock: MockCodeBlock };
+});
+
 import AnswerCard from './AnswerCard';
 import type { FinalAnswer } from '@/lib/agent/types';
 
