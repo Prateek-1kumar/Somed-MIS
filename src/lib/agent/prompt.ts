@@ -43,10 +43,18 @@ function summarizeColumnDictionary(): string {
 }
 
 function summarizeDictionary(d: DataDictionary): string {
+  // Brand families: name + SKU count for the top 25. The agent uses
+  // search_values to list SKUs on demand, so the full top-50 isn't worth
+  // ~600 tokens in every prompt.
   const brandLines = Object.entries(d.brand_families)
-    .slice(0, 50)
+    .slice(0, 25)
     .map(([family, skus]) => `    ${family}: ${skus.length} SKU${skus.length === 1 ? '' : 's'}`)
     .join('\n');
+  // HQ list is for situational awareness; the agent resolves specific names
+  // via search_values(column="hq_new", pattern). 200 entries was ~600 tokens
+  // of mostly-unused noise.
+  const hqList = d.hqs.slice(0, 50).join(', ');
+  const hqSuffix = d.hqs.length > 50 ? ` … (+${d.hqs.length - 50} more — use search_values)` : '';
   return `
 DATA DICTIONARY (derived from the live data):
 - Total rows: ${d.row_count.toLocaleString()}
@@ -54,8 +62,8 @@ DATA DICTIONARY (derived from the live data):
 - Financial years: ${d.fy_range.join(', ')}
 - Segments: ${d.segments.join(', ')}
 - ZBMs: ${d.zbms.join(', ')}
-- HQs: ${d.hqs.join(', ')}
-- Brand families (top 50 by name):
+- HQs (top 50 by name): ${hqList}${hqSuffix}
+- Brand families (top 25 by name):
 ${brandLines}
 - Use search_values(column="item_name", pattern="<family>") to list all SKUs in a family.
 `.trim();

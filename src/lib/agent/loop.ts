@@ -57,9 +57,12 @@ export async function* runAgent(
     // blank trace and assumes the chat is stuck.
     yield { type: 'thinking', text: 'Reading question and retrieving related verified patterns…' };
 
+    // k tuned for prompt-token budget: each golden example with full SQL is
+    // ~250 tokens, each anchor is ~200. The hybrid retriever ranks by RRF so
+    // the top 3/2 capture most of the signal of top 5/3.
     const { golden: goldenExamples, anchors } = await retrieveAll(userMessage, {
-      goldenK: 5,
-      anchorsK: 3,
+      goldenK: 3,
+      anchorsK: 2,
     });
     const systemPrompt = buildSystemPrompt({
       dictionary: deps.db.dictionary,

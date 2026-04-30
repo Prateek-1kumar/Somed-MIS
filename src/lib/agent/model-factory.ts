@@ -32,7 +32,9 @@ export function createModelFactory(opts: ModelFactoryOptions): () => ModelAdapte
   const steps: ChainStep[] = [];
 
   // Tier 1 — paid-grade reasoning (Gemini's free tier is thin but the
-  // model is strong when quota exists).
+  // model is strong when quota exists). 2.5-pro free tier is only 5 RPD;
+  // when that and 2.0-flash run out, 2.0-flash-lite has a separate quota
+  // bucket and usually still has headroom.
   if (opts.geminiApiKey) {
     steps.push({
       label: 'gemini-2.5-pro',
@@ -41,6 +43,10 @@ export function createModelFactory(opts: ModelFactoryOptions): () => ModelAdapte
     steps.push({
       label: 'gemini-2.0-flash',
       build: () => createGeminiAdapter({ apiKey: opts.geminiApiKey!, model: 'gemini-2.0-flash' }),
+    });
+    steps.push({
+      label: 'gemini-2.0-flash-lite',
+      build: () => createGeminiAdapter({ apiKey: opts.geminiApiKey!, model: 'gemini-2.0-flash-lite' }),
     });
   }
 
@@ -78,14 +84,18 @@ export function createModelFactory(opts: ModelFactoryOptions): () => ModelAdapte
 
   // Tier 4 — Groq (fastest inference; multiple model architectures so
   // tool-call failure modes differ and at least one usually handles the turn).
+  // Order is by free-tier TPM: gpt-oss-120b/20b are 8K TPM, llama-3.3-70b is
+  // 12K TPM. With our ~3-4K-token system prompts the smaller-TPM models
+  // single-shot a turn but rate-limit on follow-ups; llama-70b has the
+  // headroom for multi-step tool-use turns.
   if (opts.groqApiKey) {
-    steps.push({
-      label: 'groq-openai-gpt-oss-20b',
-      build: () => createGroqAdapter({ apiKey: opts.groqApiKey!, model: 'openai/gpt-oss-20b' }),
-    });
     steps.push({
       label: 'groq-openai-gpt-oss-120b',
       build: () => createGroqAdapter({ apiKey: opts.groqApiKey!, model: 'openai/gpt-oss-120b' }),
+    });
+    steps.push({
+      label: 'groq-openai-gpt-oss-20b',
+      build: () => createGroqAdapter({ apiKey: opts.groqApiKey!, model: 'openai/gpt-oss-20b' }),
     });
     steps.push({
       label: 'groq-llama-3.3-70b',
