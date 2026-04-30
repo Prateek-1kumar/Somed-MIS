@@ -1,9 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, Check, Edit3, Flag, Sparkles } from 'lucide-react';
 import { runRawSql } from '@/app/reports/actions';
 import AnswerCard from '@/components/chat/AnswerCard';
 import StreamingTrace from '@/components/chat/StreamingTrace';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { MessageSkeleton } from '@/components/ui/skeletons';
 import { streamAgent } from '@/lib/chatClient';
 import {
   loadChatState,
@@ -68,12 +71,42 @@ export default function ChatPage() {
   const [correctionText, setCorrectionText] = useState('');
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [showScrollDown, setShowScrollDown] = useState(false);
 
   // Hydrate from sessionStorage on mount.
   useEffect(() => {
     const loaded = loadChatState();
     if (loaded) setState(loaded);
   }, []);
+
+  // Slash-key shortcut — focus the textarea when user types `/` outside any input.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== '/') return;
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      textareaRef.current?.focus();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Track scroll position to show the "scroll to latest" floating button.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    function onScroll() {
+      if (!el) return;
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollDown(distFromBottom > 300);
+    }
+    el.addEventListener('scroll', onScroll);
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [state.messages.length]);
 
   // Warm the server DuckDB so first message doesn't pay cold-start latency.
   useEffect(() => {
@@ -325,14 +358,15 @@ export default function ChatPage() {
   // --- Render ---------------------------------------------------------------
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto w-full p-4 sm:p-6 pb-0">
+    <div className="relative flex flex-col h-full max-w-4xl mx-auto w-full p-4 sm:p-6 pb-0">
       {/* Header */}
-      <div className="border-b border-[var(--border)] pb-4 mb-4 shrink-0 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Chat with your data</h1>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">
-            Ask anything — I&apos;ll look up real values, self-correct, and wait for clarification if unsure.
-          </p>
+      <div className="border-b border-[var(--border)] pb-3 mb-4 shrink-0 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">Chat with your data</h1>
+          <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-[var(--text-muted)] font-mono">
+            <kbd className="px-1.5 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-surface-raised)]">/</kbd>
+            <span>to focus</span>
+          </span>
         </div>
         {state.messages.length > 0 && (
           <button
@@ -346,16 +380,19 @@ export default function ChatPage() {
       </div>
 
       {staleDataBanner && (
-        <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
+        <div className="mb-3 px-3 py-2 rounded-lg bg-[var(--accent-light)] border border-[var(--accent)]/30 text-xs text-[var(--accent-hover)] dark:text-[var(--accent)]">
           Your data was updated since this conversation started.
-          <button onClick={clearAll} className="ml-2 underline font-semibold">Start fresh</button>
+          <button onClick={clearAll} className="ml-2 underline font-semibold text-[var(--accent)]">Start fresh</button>
         </div>
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto flex flex-col gap-6 pb-6 pr-2 scrollbar-thin scrollbar-thumb-[var(--border-strong)]">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto flex flex-col gap-6 pb-6 pr-2 scrollbar-thin scrollbar-thumb-[var(--border-strong)]"
+      >
         {state.messages.length === 0 && (
-          <EmptyState onPick={s => send(s)} />
+          <ChatEmptyState onPick={s => send(s)} suggestions={SUGGESTIONS} />
         )}
 
         {state.messages.map(msg => (
@@ -378,10 +415,22 @@ export default function ChatPage() {
         <div ref={bottomRef} className="h-4 shrink-0" />
       </div>
 
+      {showScrollDown && (
+        <button
+          onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          className="absolute bottom-24 right-6 z-10 w-9 h-9 rounded-full bg-[var(--bg-surface)] border border-[var(--border-strong)] shadow-[var(--shadow-popover)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          aria-label="Scroll to latest"
+          title="Scroll to latest"
+        >
+          <ArrowDown className="w-4 h-4" />
+        </button>
+      )}
+
       {/* Input Bar */}
       <div className="shrink-0 border-t border-[var(--border)] pt-4 pb-6 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)] to-transparent sticky bottom-0 z-10">
         <div className="relative shadow-sm rounded-xl">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
@@ -427,24 +476,20 @@ export default function ChatPage() {
 // Subcomponents
 // ─────────────────────────────────────────────────────────────────────────
 
-function EmptyState({ onPick }: { onPick: (s: string) => void }) {
+function ChatEmptyState({ onPick, suggestions }: { onPick: (s: string) => void; suggestions: string[] }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center px-4 mt-8 opacity-80">
-      <div className="w-16 h-16 rounded-2xl bg-[var(--bg-surface-raised)] flex items-center justify-center mb-6 shadow-sm border border-[var(--border)]">
-        <svg className="w-8 h-8 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </div>
-      <h3 className="text-lg font-medium text-[var(--text-primary)]">Ask anything about your sales data</h3>
-      <p className="text-sm text-[var(--text-muted)] mt-2 max-w-sm">
-        I&apos;ll ground my queries in real values from your data, show my reasoning, and ask if anything is ambiguous.
-      </p>
-      <div className="flex flex-wrap gap-2 justify-center mt-6 max-w-lg">
-        {SUGGESTIONS.map(s => (
+    <div className="flex-1 flex flex-col items-center justify-center px-6">
+      <EmptyState
+        icon={<Sparkles className="w-5 h-5" />}
+        title="Ask anything about your sales data"
+        description="I'll ground every query in real values, show my reasoning, and ask before guessing."
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 max-w-xl w-full">
+        {suggestions.map(s => (
           <button
             key={s}
             onClick={() => onPick(s)}
-            className="px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-surface-raised)] hover:text-[var(--text-primary)] transition-colors"
+            className="text-left px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] hover:shadow-[var(--shadow-card)] transition-all"
           >
             {s}
           </button>
@@ -474,7 +519,7 @@ function MessageView(props: MessageViewProps) {
   if (msg.role === 'user') {
     return (
       <div className="flex justify-end w-full">
-        <div className="bg-[var(--text-primary)] text-[var(--bg-surface)] rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] max-w-[85%] sm:max-w-[75%] shadow-sm leading-relaxed whitespace-pre-wrap">
+        <div className="bg-[var(--accent)] text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] max-w-[85%] sm:max-w-[75%] shadow-sm leading-relaxed whitespace-pre-wrap">
           {msg.text}
         </div>
       </div>
@@ -483,10 +528,8 @@ function MessageView(props: MessageViewProps) {
 
   return (
     <div className="flex items-start gap-3 w-full max-w-[95%] sm:max-w-[90%]">
-      <div className="w-8 h-8 rounded-full bg-[var(--bg-surface-raised)] border border-[var(--border)] flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-        <svg className="w-4 h-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
+      <div className="w-8 h-8 rounded-full bg-[var(--accent-light)] border border-[var(--border)] flex items-center justify-center shrink-0 mt-0.5 text-[var(--accent)] font-semibold text-xs">
+        S
       </div>
 
       <div className={`flex-1 space-y-3 min-w-0 ${msg.state === 'superseded' ? 'opacity-60' : ''}`}>
@@ -494,6 +537,10 @@ function MessageView(props: MessageViewProps) {
           <div className="text-xs italic text-[var(--text-muted)] bg-[var(--bg-surface-raised)] px-3 py-1.5 rounded border border-[var(--border)]">
             Superseded by correction below ↓
           </div>
+        )}
+
+        {msg.state === 'streaming' && (!msg.trace || msg.trace.length === 0) && (
+          <MessageSkeleton />
         )}
 
         {msg.trace && msg.trace.length > 0 && (
@@ -587,33 +634,41 @@ function HitlBar({ msg, correctingId, setCorrectingId, onVerified, onUnverify, o
       {verified ? (
         <button
           onClick={() => onUnverify(msg)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-[12px] font-semibold hover:bg-emerald-600 transition-colors"
+          className="px-3 py-1.5 bg-[var(--accent)] text-white border border-[var(--accent)] rounded-lg text-[12px] font-semibold hover:bg-[var(--accent-hover)] transition-colors"
         >
-          ✓ Verified — click to undo
+          <span className="inline-flex items-center gap-1.5">
+            <Check className="w-3 h-3" /> Verified — click to undo
+          </span>
         </button>
       ) : (
         <button
           onClick={() => onVerified(msg)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-emerald-400 transition-colors"
+          className="px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors"
         >
-          ✓ Verified
+          <span className="inline-flex items-center gap-1.5">
+            <Check className="w-3 h-3" /> Verify
+          </span>
         </button>
       )}
       <button
         onClick={() => setCorrectingId(correctingId === msg.id ? null : msg.id)}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-blue-400 transition-colors"
+        className="px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-blue-400 transition-colors"
       >
-        ✎ Correct
+        <span className="inline-flex items-center gap-1.5">
+          <Edit3 className="w-3 h-3" /> Correct
+        </span>
       </button>
       <button
         onClick={() => onFlag(msg)}
-        className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-[12px] font-medium transition-colors ${
+        className={`px-3 py-1.5 border rounded-lg text-[12px] font-medium transition-colors ${
           flagged
             ? 'bg-red-100 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-700 dark:text-red-300'
             : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-red-400'
         }`}
       >
-        🚩 {flagged ? 'Flagged' : 'Flag'}
+        <span className="inline-flex items-center gap-1.5">
+          <Flag className="w-3 h-3" /> {flagged ? 'Flagged' : 'Flag'}
+        </span>
       </button>
     </div>
   );
