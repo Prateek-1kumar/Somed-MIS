@@ -1,7 +1,9 @@
 'use client';
 import { useRef, useState } from 'react';
 import Papa from 'papaparse';
+import { Upload, CheckCircle2, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import { CSV_COLUMNS, validateCsvRow } from '@/lib/schema';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
 
 interface ValidationState {
   totalRows: number;
@@ -20,14 +22,22 @@ export default function UploadZone({ onValidated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  const reset = () => {
+    setError(null);
+    setValidation(null);
+  };
+
   const processFile = (file: File) => {
     setError(null);
     setValidation(null);
     Papa.parse<Record<string, string>>(file, {
       header: true,
-      complete: (results) => {
+      complete: results => {
         const rows = results.data.filter(r => Object.values(r).some(v => v.trim()));
-        if (!rows.length) { setError('File is empty'); return; }
+        if (!rows.length) {
+          setError('File is empty');
+          return;
+        }
         const firstValidation = validateCsvRow(rows[0]);
         if (!firstValidation.valid && firstValidation.missingColumns.length > 0) {
           setError(`Missing columns: ${firstValidation.missingColumns.slice(0, 5).join(', ')}`);
@@ -41,84 +51,103 @@ export default function UploadZone({ onValidated }: Props) {
         const csv = Papa.unparse(rows);
         onValidated(csv, state);
       },
-      error: (e) => setError(e.message),
+      error: e => setError(e.message),
     });
   };
 
+  const dropzoneClass = [
+    'rounded-xl text-center cursor-pointer transition-all px-8 py-14 flex flex-col items-center justify-center gap-3',
+    dragging
+      ? 'border-2 border-dashed border-[var(--accent)] bg-[var(--accent-soft)]'
+      : 'border-2 border-dashed border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-surface-raised)]',
+  ].join(' ');
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+    <div className="flex flex-col w-full">
       <div
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) processFile(f); }}
-        onClick={() => inputRef.current?.click()}
-        style={{
-          border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
-          borderRadius: '12px',
-          padding: '56px 32px',
-          textAlign: 'center',
-          cursor: 'pointer',
-          backgroundColor: dragging ? 'var(--bg-accent)' : 'var(--bg-base)',
-          transition: 'all 0.2s ease',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px'
+        onDragOver={e => {
+          e.preventDefault();
+          setDragging(true);
         }}
-        onMouseOver={e => { if (!dragging) e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.backgroundColor = 'var(--bg-surface-raised)'; }}
-        onMouseOut={e => { if (!dragging) e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.backgroundColor = 'var(--bg-base)'; }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => {
+          e.preventDefault();
+          setDragging(false);
+          const f = e.dataTransfer.files[0];
+          if (f) processFile(f);
+        }}
+        onClick={() => inputRef.current?.click()}
+        className={dropzoneClass}
       >
-        <div style={{ 
-          width: '56px', height: '56px', borderRadius: '50%', 
-          backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '4px'
-        }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
+        <div
+          className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${
+            dragging
+              ? 'bg-[var(--accent)] text-white'
+              : 'bg-[var(--bg-surface-raised)] text-[var(--text-secondary)] border border-[var(--border)]'
+          }`}
+        >
+          <Upload className="w-6 h-6" />
         </div>
         <div>
-          <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>
-            Click to upload <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>or drag and drop</span>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">
+            Click to upload{' '}
+            <span className="text-[var(--text-muted)] font-normal">or drag and drop</span>
           </p>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
-            CSV files optimized for Shomed schema
+          <p className="text-xs text-[var(--text-muted)] mt-1">
+            CSV files matching the Shomed schema ({CSV_COLUMNS.length} columns)
           </p>
         </div>
-        <input ref={inputRef} type="file" accept=".csv" style={{ display: 'none' }}
-          onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv"
+          className="hidden"
+          onChange={e => {
+            const f = e.target.files?.[0];
+            if (f) processFile(f);
+          }}
+        />
       </div>
-      
+
       {error && (
-        <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', backgroundColor: 'rgba(239, 68, 68, 0.05)', borderRadius: '8px', borderLeft: '3px solid var(--danger)' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <p style={{ fontSize: '13px', color: 'var(--danger)', margin: 0, fontWeight: 500 }}>{error}</p>
+        <div className="mt-4">
+          <ErrorBanner error={error} onRetry={reset} />
         </div>
       )}
-      
+
       {validation && (
-        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', backgroundColor: 'var(--bg-surface-raised)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            <p style={{ fontSize: '13px', color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>
-              <span style={{ color: 'var(--success)' }}>{CSV_COLUMNS.length} columns verified</span> with strict schema match
+        <div className="mt-5 space-y-2">
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-[var(--accent-soft)] border border-[var(--accent)]/20 rounded-lg">
+            <CheckCircle2 className="w-4 h-4 text-[var(--accent)] shrink-0" />
+            <p className="text-xs text-[var(--text-primary)] font-medium">
+              <span className="text-[var(--accent)] font-semibold">
+                {CSV_COLUMNS.length} columns verified
+              </span>{' '}
+              with strict schema match
             </p>
           </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', backgroundColor: 'var(--bg-surface-raised)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            <p style={{ fontSize: '13px', color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>
-              <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{validation.totalRows.toLocaleString()}</span> valid rows detected &middot; Period: <span style={{ fontWeight: 600 }}>{validation.yyyymm}</span>
+
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-[var(--bg-surface-raised)] border border-[var(--border)] rounded-lg">
+            <FileSpreadsheet className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+            <p className="text-xs text-[var(--text-primary)]">
+              <span className="font-semibold">{validation.totalRows.toLocaleString()}</span> valid
+              rows detected · Period:{' '}
+              <span className="font-semibold">{validation.yyyymm}</span>
             </p>
           </div>
 
           {validation.blankHqCount > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', backgroundColor: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', borderLeft: '3px solid var(--warning)' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              <p style={{ fontSize: '13px', color: 'var(--text-primary)', margin: 0 }}>
-                <span style={{ fontWeight: 600, color: 'var(--warning)' }}>{validation.blankHqCount} rows</span> have missing <code style={{ backgroundColor: 'var(--bg-surface)', padding: '2px 4px', borderRadius: '4px', fontSize: '12px' }}>hq_new</code> &mdash; please review before confirming.
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <p className="text-xs text-[var(--text-primary)]">
+                <span className="font-semibold text-amber-700 dark:text-amber-300">
+                  {validation.blankHqCount} rows
+                </span>{' '}
+                have missing{' '}
+                <code className="bg-[var(--bg-surface)] px-1 py-0.5 rounded text-[11px]">
+                  hq_new
+                </code>{' '}
+                — please review before confirming.
               </p>
             </div>
           )}
