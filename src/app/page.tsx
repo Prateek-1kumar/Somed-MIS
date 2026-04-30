@@ -24,7 +24,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'returning',  label: 'Returning' },
 ];
 
-const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-muted)] cursor-pointer';
+const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-light)] cursor-pointer';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
@@ -35,14 +35,11 @@ export default function Home() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Shomed Remedies MIS</h1>
-          <p className="text-sm text-[var(--text-muted)] mt-0.5">Executive Dashboard</p>
-        </div>
+      {/* Page Header */}
+      <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">Dashboard</h1>
 
-        {/* Filter Bar */}
+      {/* Sticky Filter Toolbar */}
+      <div className="sticky top-0 z-20 bg-[var(--bg-base)] py-3 -mx-6 px-6 border-b border-[var(--border)]">
         <div className="flex flex-wrap items-center gap-2">
           <select value={filters.fy ?? ''} onChange={e => setFilter('fy', e.target.value)} className={selectCls}>
             <option value="">All FYs</option>

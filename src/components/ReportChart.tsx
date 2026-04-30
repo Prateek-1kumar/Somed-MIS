@@ -2,8 +2,9 @@
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ChartType } from '@/reports';
 
-// A sophisticated, modern palette (indigo, emerald, amber, rose, purples)
-const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#0ea5e9', '#ec4899', '#14b8a6'];
+// Emerald-led palette: brand accent first, then complementary indigo / amber / red.
+// Picks from CSS var so the primary tracks light/dark mode emerald automatically.
+const COLORS = ['var(--accent)', '#6366f1', '#f59e0b', '#ef4444', '#8b5cf6', '#0ea5e9', '#ec4899', '#14b8a6'];
 
 // Number formatter for concise readable numbers
 const formatValue = (value: number) => {
